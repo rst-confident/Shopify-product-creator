@@ -1,0 +1,16 @@
+Product Name,Price,EAN,SKU,Color,Image URL,Fabric,Care Instructions,Quality,Style
+Winter Coat Black,599.00,1234567890001,WC-001,Black,https://images.unsplash.com/photo-1539533018447-63fcce2678e3,100% Wool,Dry clean only,Premium,Classic
+Winter Coat Red,599.00,1234567890002,WC-002,Red,https://images.unsplash.com/photo-1539533018447-63fcce2678e3,100% Wool,Dry clean only,Premium,Classic
+Summer Dress Blue,349.00,1234567890003,SD-001,Blue,https://images.unsplash.com/photo-1515372039744-b8f02a3ae446,Cotton blend,Machine wash cold,Standard,Casual
+Summer Dress White,349.00,1234567890004,SD-002,White,https://images.unsplash.com/photo-1515372039744-b8f02a3ae446,Cotton blend,Machine wash cold,Standard,Casual
+Leather Jacket Brown,899.00,1234567890005,LJ-001,Brown,https://images.unsplash.com/photo-1551028719-00167b16eac5,Genuine leather,Professional clean only,Premium,Biker
+Cotton T-Shirt Red,79.00,1234567890006,TS-001,Red,https://images.unsplash.com/photo-1521572163474-6864f9cf17ab,100% Cotton,Machine wash warm,Basic,Casual
+Cotton T-Shirt Blue,79.00,1234567890007,TS-002,Blue,https://images.unsplash.com/photo-1521572163474-6864f9cf17ab,100% Cotton,Machine wash warm,Basic,Casual
+Cotton T-Shirt White,79.00,1234567890008,TS-003,White,https://images.unsplash.com/photo-1521572163474-6864f9cf17ab,100% Cotton,Machine wash warm,Basic,Casual
+Wool Sweater Grey,299.00,1234567890009,WS-001,Grey,https://images.unsplash.com/photo-1576566588028-4147f3842f27,Merino wool,Hand wash cold,Premium,Casual
+Denim Jeans Blue,179.00,1234567890010,DJ-001,Blue,https://images.unsplash.com/photo-1542272604-787c3835535d,98% Cotton 2% Elastane,Machine wash cold,Standard,Casual
+Silk Blouse Pink,259.00,1234567890011,SB-001,Pink,https://images.unsplash.com/photo-1564257577-3ebe9e922bac,100% Silk,Dry clean recommended,Premium,Elegant
+Running Shoes Black,159.00,1234567890012,RS-001,Black,https://images.unsplash.com/photo-1542291026-7eec264c27ff,Synthetic mesh,Wipe clean,Sport,Athletic
+Yoga Pants Purple,89.00,1234567890013,YP-001,Purple,https://images.unsplash.com/photo-1506629082955-511b1aa562c8,Polyester Spandex,Machine wash cold,Sport,Athletic
+Baseball Cap Navy,45.00,1234567890014,BC-001,Navy,https://images.unsplash.com/photo-1588850561407-ed78c282e89b,100% Cotton,Hand wash,Basic,Casual
+Leather Belt Black,69.00,1234567890015,LB-001,Black,https://images.unsplash.com/photo-1624222247344-550fb60583c2,Genuine leather,Wipe with damp cloth,Standard,Classic

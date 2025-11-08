@@ -1,0 +1,52 @@
+{
+  "name": "shopify-product-import",
+  "version": "1.0.0",
+  "description": "Shopify Product Import App - AI-powered CSV to Shopify product importer",
+  "main": "dist/server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "nodemon --watch server --ext ts --exec ts-node server/index.ts",
+    "client:dev": "vite",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:client": "vite build",
+    "start": "node dist/server/index.js",
+    "migrate": "node dist/server/migrations/run.js",
+    "test": "jest"
+  },
+  "keywords": ["shopify", "product-import", "ai", "csv"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@shopify/polaris": "^12.0.0",
+    "@shopify/app-bridge": "^3.7.0",
+    "@shopify/app-bridge-react": "^3.7.0",
+    "@shopify/shopify-api": "^9.0.0",
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1",
+    "csv-parse": "^5.5.3",
+    "axios": "^1.6.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.4",
+    "@types/react": "^18.2.42",
+    "@types/react-dom": "^18.2.17",
+    "@types/multer": "^1.4.11",
+    "@types/cors": "^2.8.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.7",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2",
+    "concurrently": "^8.2.2",
+    "jest": "^29.7.0",
+    "@types/jest": "^29.5.11"
+  }
+}

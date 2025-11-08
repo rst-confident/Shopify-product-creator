@@ -1,0 +1,119 @@
+name: Deploy to Google Cloud VM
+
+on:
+  push:
+    branches:
+      - main
+      - claude/**
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build:server
+
+      - name: Build frontend
+        run: npm run build:client
+
+      - name: Create deployment package
+        run: |
+          mkdir -p deploy
+          cp -r dist deploy/
+          cp -r server/db deploy/
+          cp package*.json deploy/
+          cp -r node_modules deploy/
+          tar -czf deploy.tar.gz deploy/
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.GCP_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.GCP_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to Google Cloud VM
+        env:
+          GCP_USER: ${{ secrets.GCP_USER }}
+          GCP_HOST: ${{ secrets.GCP_HOST }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SHOPIFY_API_KEY: ${{ secrets.SHOPIFY_API_KEY }}
+          SHOPIFY_API_SECRET: ${{ secrets.SHOPIFY_API_SECRET }}
+          SHOPIFY_SCOPES: ${{ secrets.SHOPIFY_SCOPES }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+        run: |
+          # Upload deployment package
+          scp deploy.tar.gz $GCP_USER@$GCP_HOST:/tmp/
+
+          # Deploy on remote server
+          ssh $GCP_USER@$GCP_HOST << 'ENDSSH'
+            set -e
+
+            # Create app directory if it doesn't exist
+            mkdir -p ~/shopify-product-import
+            cd ~/shopify-product-import
+
+            # Extract deployment package
+            tar -xzf /tmp/deploy.tar.gz
+            mv deploy/* .
+            rmdir deploy
+            rm /tmp/deploy.tar.gz
+
+            # Create .env file
+            cat > .env << EOF
+          SHOPIFY_API_KEY=${{ secrets.SHOPIFY_API_KEY }}
+          SHOPIFY_API_SECRET=${{ secrets.SHOPIFY_API_SECRET }}
+          SHOPIFY_SCOPES=${{ secrets.SHOPIFY_SCOPES }}
+          SHOPIFY_APP_URL=https://produktimport.wemarket.dk
+          HOST=produktimport.wemarket.dk
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          PORT=3001
+          NODE_ENV=production
+          SESSION_SECRET=${{ secrets.SESSION_SECRET }}
+          EOF
+
+            # Run database migrations
+            npm run migrate
+
+            # Restart application using PM2
+            if command -v pm2 &> /dev/null; then
+              pm2 restart shopify-product-import || pm2 start dist/server/index.js --name shopify-product-import
+              pm2 save
+            else
+              echo "PM2 not installed. Please install PM2 on the server."
+              exit 1
+            fi
+
+            echo "Deployment completed successfully!"
+          ENDSSH
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://produktimport.wemarket.dk/health || echo "000")
+          if [ "$response" = "200" ]; then
+            echo "✅ Deployment successful! Health check passed."
+          else
+            echo "⚠️ Warning: Health check returned status $response"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f deploy.tar.gz
+          rm -rf deploy
+          rm -f ~/.ssh/id_rsa
