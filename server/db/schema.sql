@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS products_queue (
   store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
   supplier_name VARCHAR(255) NOT NULL,
   product_title VARCHAR(500) NOT NULL,
+  base_title VARCHAR(500),
   price DECIMAL(10, 2),
   ean VARCHAR(100),
   sku VARCHAR(100),
@@ -40,7 +41,10 @@ CREATE TABLE IF NOT EXISTS products_queue (
   description TEXT,
   status VARCHAR(50) DEFAULT 'pending',
   parent_group_id VARCHAR(100),
+  product_identifier VARCHAR(32),
   shopify_product_id VARCHAR(255),
+  matched_shopify_product_id VARCHAR(255),
+  import_action VARCHAR(50),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT products_queue_uploaded_file_id_fkey FOREIGN KEY (uploaded_file_id) REFERENCES uploaded_files(id),
   CONSTRAINT products_queue_store_id_fkey FOREIGN KEY (store_id) REFERENCES stores(id)
@@ -77,6 +81,9 @@ CREATE INDEX IF NOT EXISTS idx_products_queue_ean ON products_queue(ean);
 CREATE INDEX IF NOT EXISTS idx_products_queue_status ON products_queue(status);
 CREATE INDEX IF NOT EXISTS idx_products_queue_parent_group ON products_queue(parent_group_id);
 CREATE INDEX IF NOT EXISTS idx_products_queue_shopify_id ON products_queue(shopify_product_id);
+CREATE INDEX IF NOT EXISTS idx_products_queue_base_title ON products_queue(base_title);
+CREATE INDEX IF NOT EXISTS idx_products_queue_product_identifier ON products_queue(product_identifier);
+CREATE INDEX IF NOT EXISTS idx_products_queue_matched_shopify_id ON products_queue(matched_shopify_product_id);
 CREATE INDEX IF NOT EXISTS idx_product_variants_parent_group ON product_variants(parent_group_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_shop ON sessions(shop);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
