@@ -1,8 +1,17 @@
 import { Pool, PoolClient } from 'pg';
+import logger from '../utils/logger';
+import {
+  DB_POOL_MAX_SIZE,
+  DB_POOL_IDLE_TIMEOUT_MS,
+  DB_POOL_CONNECTION_TIMEOUT_MS,
+} from '../utils/constants';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+  max: DB_POOL_MAX_SIZE,
+  idleTimeoutMillis: DB_POOL_IDLE_TIMEOUT_MS,
+  connectionTimeoutMillis: DB_POOL_CONNECTION_TIMEOUT_MS,
 });
 
 export const query = async (text: string, params?: any[]) => {
@@ -10,10 +19,10 @@ export const query = async (text: string, params?: any[]) => {
   try {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
-    console.log('Executed query', { text, duration, rows: res.rowCount });
+    logger.debug('Database query executed', { duration, rows: res.rowCount });
     return res;
   } catch (error) {
-    console.error('Database query error:', error);
+    logger.error('Database query error', { error, query: text });
     throw error;
   }
 };

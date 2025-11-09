@@ -29,7 +29,12 @@ Thumbs.db
 
 # Uploads
 uploads/
+!uploads/.gitkeep
 
 # Testing
 coverage/
 .nyc_output/
+
+# Backups
+*.old.ts
+*.old.js

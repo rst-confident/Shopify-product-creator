@@ -6,6 +6,14 @@ export default defineConfig({
   build: {
     outDir: 'dist/client',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'polaris': ['@shopify/polaris'],
+          'vendor': ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
   },
   server: {
     port: 3000,
