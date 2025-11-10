@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Frame, Navigation } from '@shopify/polaris';
-import { SettingsIcon, UploadIcon, ListIcon } from '@shopify/polaris-icons';
+import { SettingsIcon, UploadIcon, ListBulletedIcon } from '@shopify/polaris-icons';
 
 // Pages
 import SettingsPage from './pages/SettingsPage';
@@ -26,7 +26,7 @@ function App() {
           },
           {
             label: 'Products Queue',
-            icon: ListIcon,
+            icon: ListBulletedIcon,
             url: '/queue',
           },
           {
