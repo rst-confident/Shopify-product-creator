@@ -67,16 +67,22 @@ jobs:
               echo "WARNING: .env created from template. Please configure it manually!"
             fi
 
-            # Stop existing containers
+            # Ensure ubuntu user is in docker group
+            if ! groups | grep -q docker; then
+              echo "Adding ubuntu to docker group..."
+              sudo usermod -aG docker ubuntu
+            fi
+
+            # Use sg to run docker commands with proper group
             echo "Stopping existing containers..."
-            docker-compose down || true
+            sg docker -c "docker-compose down" || true
 
             # Build and start containers
             echo "Building Docker images..."
-            docker-compose build --no-cache
+            sg docker -c "docker-compose build --no-cache"
 
             echo "Starting containers..."
-            docker-compose up -d
+            sg docker -c "docker-compose up -d"
 
             # Wait for services to start
             echo "Waiting for services to be healthy..."
@@ -84,7 +90,7 @@ jobs:
 
             # Check container status
             echo "Container status:"
-            docker-compose ps
+            sg docker -c "docker-compose ps"
 
             echo "========================================"
             echo "Deployment completed successfully!"
@@ -103,11 +109,11 @@ jobs:
             echo "Verifying deployment..."
 
             # Check if containers are running
-            if docker-compose ps | grep -q "Up"; then
+            if sg docker -c "docker-compose ps" | grep -q "Up"; then
               echo "✅ Containers are running"
             else
               echo "❌ Containers are not running properly"
-              docker-compose logs --tail=50
+              sg docker -c "docker-compose logs --tail=50"
               exit 1
             fi
 
@@ -115,7 +121,7 @@ jobs:
             echo "Checking application health..."
             curl -f http://localhost:3001/api/health || {
               echo "❌ Health check failed"
-              docker-compose logs --tail=50 app
+              sg docker -c "docker-compose logs --tail=50 app"
               exit 1
             }
 
@@ -131,7 +137,7 @@ jobs:
           ssh $GCP_USER@$GCP_HOST << 'ENDSSH'
             cd /home/ubuntu/shopify-product-import
             echo "=== Application Logs ==="
-            docker-compose logs --tail=100
+            sg docker -c "docker-compose logs --tail=100"
           ENDSSH
 
       - name: Cleanup SSH
