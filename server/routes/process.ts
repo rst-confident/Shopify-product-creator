@@ -1,6 +1,10 @@
 /**
  * Product Processing Routes
  * Processes CSV data with mappings and prepares products for import
+ * Now uses SKU-based matching and supports three import types:
+ * - normal: Create/update full product
+ * - preorder: Handle stock availability with metafields
+ * - inventory_change: Only update inventory levels
  */
 
 import express from 'express';
@@ -13,7 +17,7 @@ import {
   extractBaseTitle,
   generateProductIdentifier
 } from '../utils/sku';
-import { searchShopifyProducts } from '../utils/shopify-helpers';
+import { searchShopifyProductBySKU } from '../utils/shopify-helpers';
 import {
   MAX_CSV_ROWS,
   SHOPIFY_QUERY_BATCH_SIZE
@@ -27,6 +31,7 @@ interface MappedProduct {
   ean?: string;
   sku?: string;
   color?: string;
+  inventory?: string | number;
   image_url_1?: string;
   image_url_2?: string;
   image_url_3?: string;
@@ -46,23 +51,36 @@ interface ProcessedProduct {
   ean: string | null;
   sku: string;
   color: string | null;
+  inventoryQuantity: number;
   imageUrls: string[];
   description: string;
   productIdentifier: string;
   parentGroupId: string;
-  importAction: 'create_new' | 'add_variant';
+  importAction: 'create_new' | 'update_existing';
+  importType: 'normal' | 'preorder' | 'inventory_change';
   matchedShopifyProductId: string | null;
+  matchedShopifyVariantId: string | null;
+  preOrderTiming: string | null;
+  preOrderMonth: string | null;
 }
 
 /**
  * Process CSV data with mappings
- * Generates SKUs, detects existing products, and prepares for import
+ * Uses SKU-based matching to detect existing products
  */
 router.post('/', verifyRequest, async (req: AuthRequest, res) => {
   const client = await getClient();
 
   try {
-    const { fileId, mappings, records, supplierName } = req.body;
+    const {
+      fileId,
+      mappings,
+      records,
+      supplierName,
+      importType = 'normal',
+      preOrderTiming,
+      preOrderMonth
+    } = req.body;
 
     // Validate input
     if (!records || records.length === 0) {
@@ -75,10 +93,19 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
       });
     }
 
+    // Validate import type
+    const validImportTypes = ['normal', 'preorder', 'inventory_change'];
+    if (!validImportTypes.includes(importType)) {
+      return res.status(400).json({
+        error: `Invalid import type. Must be one of: ${validImportTypes.join(', ')}`
+      });
+    }
+
     logger.info('Starting product processing', {
       fileId,
       recordCount: records.length,
       supplier: supplierName,
+      importType,
     });
 
     // Start transaction
@@ -109,8 +136,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
 
     for (const product of mappedProducts) {
       try {
-        // Check for duplicate EAN
-        if (product.ean && existingEANs.includes(product.ean)) {
+        // Check for duplicate EAN (only if creating new products)
+        if (importType !== 'inventory_change' && product.ean && existingEANs.includes(product.ean)) {
           duplicates.push({
             title: product.title,
             ean: product.ean,
@@ -122,32 +149,62 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
         // Validate price
         const validatedPrice = validatePrice(product.price);
 
+        // Parse inventory quantity
+        const inventoryQuantity = parseInt(String(product.inventory || '0'), 10) || 0;
+
         // Extract base title (remove color)
         const baseTitle = extractBaseTitle(product.title, product.color);
 
-        // Generate intelligent SKU
-        const sku = generateSKU(baseTitle, product.color, supplierName, product.sku);
+        // Generate or use provided SKU
+        const sku = product.sku || generateSKU(baseTitle, product.color, supplierName);
 
         // Generate product identifier for matching
         const productIdentifier = generateProductIdentifier(baseTitle, supplierName);
 
-        // Combine description fields
-        const descriptionParts: string[] = [];
-        if (product.description_fabric) descriptionParts.push(`Fabric: ${product.description_fabric}`);
-        if (product.description_material) descriptionParts.push(`Material: ${product.description_material}`);
-        if (product.description_quality) descriptionParts.push(`Quality: ${product.description_quality}`);
-        if (product.description_fit) descriptionParts.push(`Fit: ${product.description_fit}`);
-        if (product.description_style) descriptionParts.push(`Style: ${product.description_style}`);
-        if (product.description_care) descriptionParts.push(`Care: ${product.description_care}`);
-        if (product.description_generic) descriptionParts.push(product.description_generic);
-        const description = descriptionParts.join('\n\n');
+        // Combine description fields (only for non-inventory-change imports)
+        let description = '';
+        if (importType !== 'inventory_change') {
+          const descriptionParts: string[] = [];
+          if (product.description_fabric) descriptionParts.push(`Fabric: ${product.description_fabric}`);
+          if (product.description_material) descriptionParts.push(`Material: ${product.description_material}`);
+          if (product.description_quality) descriptionParts.push(`Quality: ${product.description_quality}`);
+          if (product.description_fit) descriptionParts.push(`Fit: ${product.description_fit}`);
+          if (product.description_style) descriptionParts.push(`Style: ${product.description_style}`);
+          if (product.description_care) descriptionParts.push(`Care: ${product.description_care}`);
+          if (product.description_generic) descriptionParts.push(product.description_generic);
+          description = descriptionParts.join('\n\n');
+        }
 
-        // Collect and validate image URLs
-        const imageUrls = filterValidImageUrls([
-          product.image_url_1,
-          product.image_url_2,
-          product.image_url_3,
-        ]);
+        // Collect and validate image URLs (only for non-inventory-change imports)
+        const imageUrls = importType !== 'inventory_change'
+          ? filterValidImageUrls([
+              product.image_url_1,
+              product.image_url_2,
+              product.image_url_3,
+            ])
+          : [];
+
+        // Search Shopify for existing product by SKU
+        logger.debug('Searching Shopify for SKU', { sku });
+        const existingVariant = await searchShopifyProductBySKU(
+          req.accessToken!,
+          req.shop!,
+          sku
+        );
+
+        // Determine import action based on SKU match
+        const importAction: 'create_new' | 'update_existing' = existingVariant ? 'update_existing' : 'create_new';
+        const matchedShopifyProductId = existingVariant ? existingVariant.productId : null;
+        const matchedShopifyVariantId = existingVariant ? existingVariant.variantId : null;
+
+        if (existingVariant) {
+          logger.info('SKU found in Shopify', {
+            sku,
+            productId: existingVariant.productId,
+            variantId: existingVariant.variantId,
+            productTitle: existingVariant.productTitle,
+          });
+        }
 
         // Parent group ID for this product family
         const parentGroupId = `${supplierName}-${baseTitle}`.toLowerCase().replace(/\s+/g, '-');
@@ -159,12 +216,17 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
           ean: product.ean || null,
           sku,
           color: product.color || null,
+          inventoryQuantity,
           imageUrls,
           description,
           productIdentifier,
           parentGroupId,
-          importAction: 'create_new', // Will be updated after matching
-          matchedShopifyProductId: null,
+          importAction,
+          importType,
+          matchedShopifyProductId,
+          matchedShopifyVariantId,
+          preOrderTiming: importType === 'preorder' ? preOrderTiming : null,
+          preOrderMonth: importType === 'preorder' ? preOrderMonth : null,
         });
 
       } catch (error: any) {
@@ -179,35 +241,6 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
         });
       }
     }
-
-    // Search Shopify for existing products to match
-    logger.info('Searching for existing products in Shopify', {
-      productCount: processedProducts.length,
-    });
-
-    const uniqueBaseTitles = [...new Set(processedProducts.map(p => p.baseTitle))];
-    const existingProducts = await searchExistingProducts(
-      req.accessToken!,
-      req.shop!,
-      uniqueBaseTitles
-    );
-
-    // Match processed products to existing Shopify products
-    const productMatches = matchProducts(processedProducts, existingProducts);
-
-    // Update import actions based on matches
-    processedProducts.forEach((product, index) => {
-      const match = productMatches.get(index);
-      if (match) {
-        product.importAction = 'add_variant';
-        product.matchedShopifyProductId = match;
-        logger.info('Product matched to existing Shopify product', {
-          title: product.title,
-          baseTitle: product.baseTitle,
-          shopifyProductId: match,
-        });
-      }
-    });
 
     // Group products by parent group (for statistics)
     const productGroups = new Map<string, ProcessedProduct[]>();
@@ -235,13 +268,20 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
     // Commit transaction
     await client.query('COMMIT');
 
-    logger.info('Product processing completed', {
+    const stats = {
       total: records.length,
       processed: savedProducts.length,
       duplicates: duplicates.length,
       createNew: processedProducts.filter(p => p.importAction === 'create_new').length,
-      addVariant: processedProducts.filter(p => p.importAction === 'add_variant').length,
-    });
+      updateExisting: processedProducts.filter(p => p.importAction === 'update_existing').length,
+      byImportType: {
+        normal: processedProducts.filter(p => p.importType === 'normal').length,
+        preorder: processedProducts.filter(p => p.importType === 'preorder').length,
+        inventory_change: processedProducts.filter(p => p.importType === 'inventory_change').length,
+      }
+    };
+
+    logger.info('Product processing completed', stats);
 
     res.json({
       success: true,
@@ -250,8 +290,9 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
         productsReady: savedProducts.length,
         duplicatesSkipped: duplicates.length,
         productFamilies: productGroups.size,
-        willCreateNew: processedProducts.filter(p => p.importAction === 'create_new').length,
-        willAddVariants: processedProducts.filter(p => p.importAction === 'add_variant').length,
+        willCreateNew: stats.createNew,
+        willUpdateExisting: stats.updateExisting,
+        importType,
       },
       duplicates,
       products: savedProducts,
@@ -318,53 +359,6 @@ async function checkDuplicateEANs(
 }
 
 /**
- * Search for existing products in Shopify by base titles
- */
-async function searchExistingProducts(
-  accessToken: string,
-  shop: string,
-  baseTitles: string[]
-): Promise<Map<string, string>> {
-  const existingProducts = new Map<string, string>();
-
-  // Search for each unique base title
-  for (const baseTitle of baseTitles) {
-    try {
-      const products = await searchShopifyProducts(accessToken, shop, baseTitle);
-
-      products.forEach((product) => {
-        const normalized = product.title.toLowerCase().replace(/[^a-z0-9]/g, '');
-        existingProducts.set(normalized, product.id);
-      });
-    } catch (error) {
-      logger.warn('Failed to search for existing product', { baseTitle, error });
-    }
-  }
-
-  return existingProducts;
-}
-
-/**
- * Match processed products to existing Shopify products
- */
-function matchProducts(
-  processedProducts: ProcessedProduct[],
-  existingProducts: Map<string, string>
-): Map<number, string> {
-  const matches = new Map<number, string>();
-
-  processedProducts.forEach((product, index) => {
-    const normalized = product.baseTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-    if (existingProducts.has(normalized)) {
-      matches.set(index, existingProducts.get(normalized)!);
-    }
-  });
-
-  return matches;
-}
-
-/**
  * Bulk insert products into database
  */
 async function bulkInsertProducts(
@@ -381,9 +375,10 @@ async function bulkInsertProducts(
     const result = await client.query(
       `INSERT INTO products_queue
        (uploaded_file_id, store_id, supplier_name, product_title, base_title,
-        price, ean, sku, color, image_urls, description, parent_group_id,
-        product_identifier, matched_shopify_product_id, import_action, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending')
+        price, ean, sku, color, inventory_quantity, image_urls, description, parent_group_id,
+        product_identifier, matched_shopify_product_id, matched_shopify_variant_id,
+        import_action, import_type, pre_order_timing, pre_order_month, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'pending')
        RETURNING id`,
       [
         fileId,
@@ -395,12 +390,17 @@ async function bulkInsertProducts(
         product.ean,
         product.sku,
         product.color,
+        product.inventoryQuantity,
         JSON.stringify(product.imageUrls),
         product.description,
         product.parentGroupId,
         product.productIdentifier,
         product.matchedShopifyProductId,
+        product.matchedShopifyVariantId,
         product.importAction,
+        product.importType,
+        product.preOrderTiming,
+        product.preOrderMonth,
       ]
     );
 

@@ -1,13 +1,21 @@
 /**
  * Import Routes
- * Handles importing products to Shopify
+ * Handles importing products to Shopify with three import types:
+ * - normal: Create/update full product with all data
+ * - preorder: Handle inventory with preorder metafields
+ * - inventory_change: Only update inventory levels
  */
 
 import express from 'express';
 import { AuthRequest, verifyRequest } from '../middleware/auth';
 import { query, getClient } from '../db';
 import logger from '../utils/logger';
-import { createShopifyProduct, addVariantsToProduct } from '../utils/shopify-helpers';
+import {
+  createShopifyProduct,
+  updateShopifyProduct,
+  updateVariantInventory,
+  updateProductMetafields
+} from '../utils/shopify-helpers';
 
 const router = express.Router();
 
@@ -19,17 +27,61 @@ interface QueueProduct {
   ean: string | null;
   sku: string;
   color: string | null;
+  inventoryQuantity: number;
   imageUrls: string[];
   description: string;
   parentGroupId: string;
   productIdentifier: string;
-  importAction: 'create_new' | 'add_variant';
+  importAction: 'create_new' | 'update_existing';
+  importType: 'normal' | 'preorder' | 'inventory_change';
   matchedShopifyProductId: string | null;
+  matchedShopifyVariantId: string | null;
+  preOrderTiming: string | null;
+  preOrderMonth: string | null;
+}
+
+/**
+ * Danish months mapping
+ */
+const DANISH_MONTHS: { [key: string]: string } = {
+  'january': 'januar',
+  'february': 'februar',
+  'march': 'marts',
+  'april': 'april',
+  'may': 'maj',
+  'june': 'juni',
+  'july': 'juli',
+  'august': 'august',
+  'september': 'september',
+  'october': 'oktober',
+  'november': 'november',
+  'december': 'december',
+};
+
+/**
+ * Generate preorder info text in Danish
+ */
+function generatePreOrderInfo(timing: string | null, month: string | null): string {
+  if (!timing || !month) {
+    return 'Pre-order - Kommer snart';
+  }
+
+  const danishMonth = DANISH_MONTHS[month.toLowerCase()] || month;
+
+  switch (timing.toLowerCase()) {
+    case 'start':
+      return `I starten af ${danishMonth}`;
+    case 'middle':
+      return `I midten af ${danishMonth}`;
+    case 'end':
+      return `I slutningen af ${danishMonth}`;
+    default:
+      return `I ${danishMonth}`;
+  }
 }
 
 /**
  * Import selected products to Shopify
- * Intelligently creates new products or adds variants to existing ones
  */
 router.post('/', verifyRequest, async (req: AuthRequest, res) => {
   const client = await getClient();
@@ -53,9 +105,12 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
     const result = await client.query(
       `SELECT
          id, product_title as title, base_title as "baseTitle", price, ean, sku, color,
-         image_urls as "imageUrls", description, parent_group_id as "parentGroupId",
-         product_identifier as "productIdentifier", import_action as "importAction",
-         matched_shopify_product_id as "matchedShopifyProductId"
+         inventory_quantity as "inventoryQuantity", image_urls as "imageUrls", description,
+         parent_group_id as "parentGroupId", product_identifier as "productIdentifier",
+         import_action as "importAction", import_type as "importType",
+         matched_shopify_product_id as "matchedShopifyProductId",
+         matched_shopify_variant_id as "matchedShopifyVariantId",
+         pre_order_timing as "preOrderTiming", pre_order_month as "preOrderMonth"
        FROM products_queue
        WHERE id = ANY($1) AND store_id = $2 AND status = 'pending'`,
       [productIds, req.storeId]
@@ -68,33 +123,91 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'No products found to import' });
     }
 
-    // Group products by import action and parent group
-    const toCreateNew = new Map<string, QueueProduct[]>();
-    const toAddVariants = new Map<string, QueueProduct[]>();
-
-    products.forEach((product) => {
-      if (product.importAction === 'add_variant' && product.matchedShopifyProductId) {
-        const key = product.matchedShopifyProductId;
-        const group = toAddVariants.get(key) || [];
-        group.push(product);
-        toAddVariants.set(key, group);
-      } else {
-        const key = product.productIdentifier;
-        const group = toCreateNew.get(key) || [];
-        group.push(product);
-        toCreateNew.set(key, group);
-      }
-    });
-
     const successfulImports: number[] = [];
     const failedImports: Array<{ productId: number; title: string; error: string }> = [];
 
     const shopifyStatus = publishStatus.toUpperCase() as 'ACTIVE' | 'DRAFT';
 
-    // Process products to create as new
-    logger.info('Creating new products', { count: toCreateNew.size });
+    // Group products by import type and action
+    const toCreateNormal = new Map<string, QueueProduct[]>();
+    const toUpdateNormal: QueueProduct[] = [];
+    const toHandlePreorder: QueueProduct[] = [];
+    const toUpdateInventoryOnly: QueueProduct[] = [];
 
-    for (const [productIdentifier, groupProducts] of toCreateNew.entries()) {
+    products.forEach((product) => {
+      if (product.importType === 'inventory_change') {
+        // Inventory change: only update inventory
+        toUpdateInventoryOnly.push(product);
+      } else if (product.importType === 'preorder') {
+        // Preorder: handle both create and update
+        toHandlePreorder.push(product);
+      } else if (product.importType === 'normal') {
+        if (product.importAction === 'create_new') {
+          // Normal create: group by product identifier
+          const key = product.productIdentifier;
+          const group = toCreateNormal.get(key) || [];
+          group.push(product);
+          toCreateNormal.set(key, group);
+        } else {
+          // Normal update: process individually
+          toUpdateNormal.push(product);
+        }
+      }
+    });
+
+    logger.info('Import distribution', {
+      createNormal: toCreateNormal.size,
+      updateNormal: toUpdateNormal.length,
+      preorder: toHandlePreorder.length,
+      inventoryOnly: toUpdateInventoryOnly.length,
+    });
+
+    // 1. Handle inventory-only updates
+    for (const product of toUpdateInventoryOnly) {
+      try {
+        if (!product.matchedShopifyVariantId) {
+          throw new Error('No matched variant ID for inventory update');
+        }
+
+        await updateVariantInventory(
+          req.accessToken!,
+          req.shop!,
+          product.matchedShopifyVariantId,
+          product.inventoryQuantity
+        );
+
+        await client.query(
+          `UPDATE products_queue
+           SET status = 'imported', shopify_product_id = $1
+           WHERE id = $2`,
+          [product.matchedShopifyProductId, product.id]
+        );
+
+        successfulImports.push(product.id);
+
+        logger.info('Updated inventory only', {
+          sku: product.sku,
+          variantId: product.matchedShopifyVariantId,
+          quantity: product.inventoryQuantity,
+        });
+
+      } catch (error: any) {
+        logger.error('Failed to update inventory', {
+          error: error.message,
+          productId: product.id,
+          sku: product.sku,
+        });
+
+        failedImports.push({
+          productId: product.id,
+          title: product.title,
+          error: error.message || 'Failed to update inventory',
+        });
+      }
+    }
+
+    // 2. Create normal products
+    for (const [productIdentifier, groupProducts] of toCreateNormal.entries()) {
       try {
         const shopifyProductId = await createNewProductWithVariants(
           req.accessToken!,
@@ -114,14 +227,14 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
           successfulImports.push(product.id);
         }
 
-        logger.info('Created new product', {
+        logger.info('Created normal product', {
           shopifyProductId,
           productIdentifier,
           variantCount: groupProducts.length,
         });
 
       } catch (error: any) {
-        logger.error('Failed to create new product', {
+        logger.error('Failed to create normal product', {
           error: error.message,
           productIdentifier,
         });
@@ -136,46 +249,188 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
       }
     }
 
-    // Process products to add as variants
-    logger.info('Adding variants to existing products', { count: toAddVariants.size });
-
-    for (const [shopifyProductId, groupProducts] of toAddVariants.entries()) {
+    // 3. Update normal products (full update)
+    for (const product of toUpdateNormal) {
       try {
-        await addNewVariants(
-          req.accessToken!,
-          req.shop!,
-          shopifyProductId,
-          groupProducts
-        );
-
-        // Update all products in group
-        for (const product of groupProducts) {
-          await client.query(
-            `UPDATE products_queue
-             SET status = 'imported', shopify_product_id = $1
-             WHERE id = $2`,
-            [shopifyProductId, product.id]
-          );
-          successfulImports.push(product.id);
+        if (!product.matchedShopifyProductId || !product.matchedShopifyVariantId) {
+          throw new Error('No matched product/variant ID for update');
         }
 
-        logger.info('Added variants to existing product', {
-          shopifyProductId,
-          variantCount: groupProducts.length,
+        // Update product data
+        await updateShopifyProduct(
+          req.accessToken!,
+          req.shop!,
+          product.matchedShopifyProductId,
+          {
+            title: product.title,
+            description: product.description,
+            images: product.imageUrls.length > 0
+              ? product.imageUrls.map((url: string) => ({ src: url }))
+              : undefined,
+            variants: [
+              {
+                id: product.matchedShopifyVariantId,
+                price: product.price.toString(),
+                sku: product.sku,
+              },
+            ],
+          }
+        );
+
+        // Update inventory
+        await updateVariantInventory(
+          req.accessToken!,
+          req.shop!,
+          product.matchedShopifyVariantId,
+          product.inventoryQuantity
+        );
+
+        await client.query(
+          `UPDATE products_queue
+           SET status = 'imported', shopify_product_id = $1
+           WHERE id = $2`,
+          [product.matchedShopifyProductId, product.id]
+        );
+
+        successfulImports.push(product.id);
+
+        logger.info('Updated normal product fully', {
+          sku: product.sku,
+          productId: product.matchedShopifyProductId,
         });
 
       } catch (error: any) {
-        logger.error('Failed to add variants', {
+        logger.error('Failed to update normal product', {
           error: error.message,
-          shopifyProductId,
+          productId: product.id,
+          sku: product.sku,
         });
 
-        groupProducts.forEach((p) => {
-          failedImports.push({
-            productId: p.id,
-            title: p.title,
-            error: error.message || 'Failed to add variant',
+        failedImports.push({
+          productId: product.id,
+          title: product.title,
+          error: error.message || 'Failed to update product',
+        });
+      }
+    }
+
+    // 4. Handle preorder products
+    for (const product of toHandlePreorder) {
+      try {
+        let shopifyProductId: string;
+
+        // Create or update product
+        if (product.importAction === 'create_new') {
+          // Create new preorder product
+          shopifyProductId = await createNewProductWithVariants(
+            req.accessToken!,
+            req.shop!,
+            [product],
+            shopifyStatus
+          );
+        } else {
+          // Use existing product
+          if (!product.matchedShopifyProductId || !product.matchedShopifyVariantId) {
+            throw new Error('No matched product/variant ID for preorder update');
+          }
+          shopifyProductId = product.matchedShopifyProductId;
+
+          // Update inventory
+          await updateVariantInventory(
+            req.accessToken!,
+            req.shop!,
+            product.matchedShopifyVariantId,
+            product.inventoryQuantity
+          );
+        }
+
+        // Handle preorder metafields based on inventory
+        if (product.inventoryQuantity === 0) {
+          // Set preorder metafields
+          const preOrderInfo = generatePreOrderInfo(
+            product.preOrderTiming,
+            product.preOrderMonth
+          );
+
+          await updateProductMetafields(
+            req.accessToken!,
+            req.shop!,
+            shopifyProductId,
+            [
+              {
+                namespace: 'custom',
+                key: 'pre_order',
+                type: 'boolean',
+                value: 'true',
+              },
+              {
+                namespace: 'custom',
+                key: 'pre_order_info',
+                type: 'single_line_text_field',
+                value: preOrderInfo,
+              },
+            ]
+          );
+
+          logger.info('Set preorder metafields', {
+            shopifyProductId,
+            preOrderInfo,
           });
+        } else {
+          // Remove preorder metafields (set to false/empty)
+          await updateProductMetafields(
+            req.accessToken!,
+            req.shop!,
+            shopifyProductId,
+            [
+              {
+                namespace: 'custom',
+                key: 'pre_order',
+                type: 'boolean',
+                value: 'false',
+              },
+              {
+                namespace: 'custom',
+                key: 'pre_order_info',
+                type: 'single_line_text_field',
+                value: '',
+              },
+            ]
+          );
+
+          logger.info('Removed preorder metafields (product in stock)', {
+            shopifyProductId,
+            inventoryQuantity: product.inventoryQuantity,
+          });
+        }
+
+        await client.query(
+          `UPDATE products_queue
+           SET status = 'imported', shopify_product_id = $1
+           WHERE id = $2`,
+          [shopifyProductId, product.id]
+        );
+
+        successfulImports.push(product.id);
+
+        logger.info('Handled preorder product', {
+          sku: product.sku,
+          shopifyProductId,
+          inventory: product.inventoryQuantity,
+          isPreorder: product.inventoryQuantity === 0,
+        });
+
+      } catch (error: any) {
+        logger.error('Failed to handle preorder product', {
+          error: error.message,
+          productId: product.id,
+          sku: product.sku,
+        });
+
+        failedImports.push({
+          productId: product.id,
+          title: product.title,
+          error: error.message || 'Failed to handle preorder',
         });
       }
     }
@@ -194,8 +449,10 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
         totalRequested: productIds.length,
         successful: successfulImports.length,
         failed: failedImports.length,
-        newProductsCreated: toCreateNew.size,
-        variantsAdded: toAddVariants.size,
+        normalCreated: toCreateNormal.size,
+        normalUpdated: toUpdateNormal.length,
+        preorderHandled: toHandlePreorder.length,
+        inventoryOnlyUpdated: toUpdateInventoryOnly.length,
       },
       failedImports,
     });
@@ -269,25 +526,6 @@ async function createNewProductWithVariants(
   const shopifyProductId = await createShopifyProduct(accessToken, shop, productData);
 
   return shopifyProductId;
-}
-
-/**
- * Add variants to existing Shopify product
- */
-async function addNewVariants(
-  accessToken: string,
-  shop: string,
-  shopifyProductId: string,
-  products: QueueProduct[]
-): Promise<void> {
-  const variants = products.map((p) => ({
-    price: p.price.toString(),
-    sku: p.sku,
-    barcode: p.ean,
-    options: p.color ? [p.color] : [],
-  }));
-
-  await addVariantsToProduct(accessToken, shop, shopifyProductId, variants);
 }
 
 export default router;

@@ -9,7 +9,9 @@ import { retryWithBackoff } from './retry';
 export interface ShopifyProduct {
   id: string;
   title: string;
+  description?: string;
   variants: ShopifyVariant[];
+  images?: Array<{ src: string }>;
 }
 
 export interface ShopifyVariant {
@@ -17,7 +19,17 @@ export interface ShopifyVariant {
   sku: string;
   barcode: string | null;
   price: string;
+  inventoryQuantity?: number;
   selectedOptions: Array<{ name: string; value: string }>;
+}
+
+export interface VariantSearchResult {
+  variantId: string;
+  productId: string;
+  productTitle: string;
+  sku: string;
+  price: string;
+  inventoryQuantity: number;
 }
 
 /**
@@ -340,6 +352,339 @@ export async function createShopifyProduct(
     return productId;
   } catch (error) {
     logger.error('Failed to create Shopify product', { error, title: product.title });
+    throw error;
+  }
+}
+
+/**
+ * Search Shopify for existing product variant by SKU
+ * @param accessToken - Shopify access token
+ * @param shop - Shop domain
+ * @param sku - SKU to search for
+ * @returns Variant details if found, null otherwise
+ */
+export async function searchShopifyProductBySKU(
+  accessToken: string,
+  shop: string,
+  sku: string
+): Promise<VariantSearchResult | null> {
+  const client = new shopify.clients.Graphql({
+    session: { accessToken, shop } as any
+  });
+
+  const query = `
+    query searchProductsBySKU($query: String!) {
+      productVariants(first: 1, query: $query) {
+        edges {
+          node {
+            id
+            sku
+            price
+            inventoryQuantity
+            product {
+              id
+              title
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const response: any = await retryWithBackoff(
+      () => client.query({
+        data: {
+          query,
+          variables: { query: `sku:${sku}` },
+        },
+      }),
+      3,
+      `Search Shopify by SKU: ${sku}`
+    );
+
+    const edges = response.body.data.productVariants.edges;
+
+    if (edges.length === 0) {
+      logger.debug('SKU not found in Shopify', { sku });
+      return null;
+    }
+
+    const variant = edges[0].node;
+
+    logger.info('Found existing variant by SKU', {
+      sku,
+      variantId: variant.id,
+      productId: variant.product.id,
+    });
+
+    return {
+      variantId: variant.id,
+      productId: variant.product.id,
+      productTitle: variant.product.title,
+      sku: variant.sku,
+      price: variant.price,
+      inventoryQuantity: variant.inventoryQuantity || 0,
+    };
+  } catch (error) {
+    logger.error('Failed to search Shopify by SKU', { error, sku });
+    throw error;
+  }
+}
+
+/**
+ * Update existing Shopify product (full update)
+ * @param accessToken - Shopify access token
+ * @param shop - Shop domain
+ * @param productId - Shopify product ID
+ * @param updates - Product fields to update
+ */
+export async function updateShopifyProduct(
+  accessToken: string,
+  shop: string,
+  productId: string,
+  updates: {
+    title?: string;
+    description?: string;
+    variants?: Array<{
+      id: string;
+      price?: string;
+      sku?: string;
+    }>;
+    images?: Array<{ src: string }>;
+  }
+): Promise<void> {
+  const client = new shopify.clients.Graphql({
+    session: { accessToken, shop } as any
+  });
+
+  const mutation = `
+    mutation productUpdate($input: ProductInput!) {
+      productUpdate(input: $input) {
+        product {
+          id
+          title
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const input: any = { id: productId };
+
+  if (updates.title) input.title = updates.title;
+  if (updates.description) input.descriptionHtml = updates.description.replace(/\n/g, '<br>');
+  if (updates.variants) input.variants = updates.variants;
+  if (updates.images) input.images = updates.images;
+
+  try {
+    const response: any = await retryWithBackoff(
+      () => client.query({
+        data: {
+          query: mutation,
+          variables: { input },
+        },
+      }),
+      3,
+      `Update product ${productId}`
+    );
+
+    const result = response.body.data.productUpdate;
+
+    if (result.userErrors && result.userErrors.length > 0) {
+      const errorMessage = result.userErrors.map((e: any) => e.message).join(', ');
+      throw new Error(`Shopify API error: ${errorMessage}`);
+    }
+
+    logger.info('Updated Shopify product', { productId });
+  } catch (error) {
+    logger.error('Failed to update Shopify product', { error, productId });
+    throw error;
+  }
+}
+
+/**
+ * Update variant inventory level only
+ * @param accessToken - Shopify access token
+ * @param shop - Shop domain
+ * @param variantId - Shopify variant ID
+ * @param inventoryQuantity - New inventory quantity
+ */
+export async function updateVariantInventory(
+  accessToken: string,
+  shop: string,
+  variantId: string,
+  inventoryQuantity: number
+): Promise<void> {
+  const client = new shopify.clients.Graphql({
+    session: { accessToken, shop } as any
+  });
+
+  // First, get the inventory item ID
+  const queryInventoryItem = `
+    query getInventoryItem($id: ID!) {
+      productVariant(id: $id) {
+        inventoryItem {
+          id
+        }
+      }
+    }
+  `;
+
+  try {
+    const inventoryResponse: any = await retryWithBackoff(
+      () => client.query({
+        data: {
+          query: queryInventoryItem,
+          variables: { id: variantId },
+        },
+      }),
+      3,
+      `Get inventory item for variant ${variantId}`
+    );
+
+    const inventoryItemId = inventoryResponse.body.data.productVariant.inventoryItem.id;
+
+    // Get the first location
+    const queryLocation = `
+      query {
+        locations(first: 1) {
+          edges {
+            node {
+              id
+            }
+          }
+        }
+      }
+    `;
+
+    const locationResponse: any = await retryWithBackoff(
+      () => client.query({
+        data: { query: queryLocation },
+      }),
+      3,
+      'Get first location'
+    );
+
+    const locationId = locationResponse.body.data.locations.edges[0].node.id;
+
+    // Update inventory
+    const mutation = `
+      mutation inventoryAdjustQuantity($input: InventoryAdjustQuantityInput!) {
+        inventoryAdjustQuantity(input: $input) {
+          inventoryLevel {
+            id
+            available
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const adjustResponse: any = await retryWithBackoff(
+      () => client.query({
+        data: {
+          query: mutation,
+          variables: {
+            input: {
+              inventoryLevelId: `gid://shopify/InventoryLevel/${inventoryItemId.split('/').pop()}?inventory_item_id=${inventoryItemId.split('/').pop()}`,
+              availableDelta: inventoryQuantity,
+            },
+          },
+        },
+      }),
+      3,
+      `Update inventory for variant ${variantId}`
+    );
+
+    const result = adjustResponse.body.data.inventoryAdjustQuantity;
+
+    if (result.userErrors && result.userErrors.length > 0) {
+      const errorMessage = result.userErrors.map((e: any) => e.message).join(', ');
+      throw new Error(`Shopify API error: ${errorMessage}`);
+    }
+
+    logger.info('Updated variant inventory', { variantId, inventoryQuantity });
+  } catch (error) {
+    logger.error('Failed to update variant inventory', { error, variantId, inventoryQuantity });
+    throw error;
+  }
+}
+
+/**
+ * Update product metafields (for preorder info)
+ * @param accessToken - Shopify access token
+ * @param shop - Shop domain
+ * @param productId - Shopify product ID
+ * @param metafields - Metafields to set
+ */
+export async function updateProductMetafields(
+  accessToken: string,
+  shop: string,
+  productId: string,
+  metafields: Array<{
+    namespace: string;
+    key: string;
+    type: string;
+    value: string;
+  }>
+): Promise<void> {
+  const client = new shopify.clients.Graphql({
+    session: { accessToken, shop } as any
+  });
+
+  const mutation = `
+    mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields {
+          id
+          namespace
+          key
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const metafieldInputs = metafields.map((mf) => ({
+    ownerId: productId,
+    namespace: mf.namespace,
+    key: mf.key,
+    type: mf.type,
+    value: mf.value,
+  }));
+
+  try {
+    const response: any = await retryWithBackoff(
+      () => client.query({
+        data: {
+          query: mutation,
+          variables: { metafields: metafieldInputs },
+        },
+      }),
+      3,
+      `Update metafields for product ${productId}`
+    );
+
+    const result = response.body.data.metafieldsSet;
+
+    if (result.userErrors && result.userErrors.length > 0) {
+      const errorMessage = result.userErrors.map((e: any) => e.message).join(', ');
+      throw new Error(`Shopify API error: ${errorMessage}`);
+    }
+
+    logger.info('Updated product metafields', { productId, metafieldCount: metafields.length });
+  } catch (error) {
+    logger.error('Failed to update product metafields', { error, productId });
     throw error;
   }
 }
