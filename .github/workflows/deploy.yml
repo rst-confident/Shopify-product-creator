@@ -1,11 +1,9 @@
 name: Deploy to Google Cloud VM
 
 on:
-  push:
-    branches:
-      - main
-      - claude/**
-  workflow_dispatch:
+  # Automatic deployment disabled due to SSH docker permission issues
+  # Deploy manually on VM instead: cd ~/shopify-product-import && ./deploy.sh
+  workflow_dispatch:  # Keep manual trigger option
 
 jobs:
   deploy:
