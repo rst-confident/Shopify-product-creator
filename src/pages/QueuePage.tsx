@@ -11,7 +11,8 @@ import {
   Banner,
   EmptyState,
   SkeletonBodyText,
-  Stack,
+  InlineStack,
+  BlockStack,
   Badge,
   Modal,
   TextContainer,
@@ -198,11 +199,11 @@ export default function QueuePage() {
                     media={media}
                     accessibilityLabel={`View details for ${title}`}
                   >
-                    <Stack vertical spacing="tight">
+                    <BlockStack gap="200">
                       <Text variant="bodyMd" fontWeight="bold" as="h3">
                         {title}
                       </Text>
-                      <Stack spacing="tight">
+                      <InlineStack gap="200">
                         <Badge>{supplierName}</Badge>
                         {color && <Badge status="info">{color}</Badge>}
                         <Text variant="bodyMd" as="span">
@@ -211,8 +212,8 @@ export default function QueuePage() {
                         <Text variant="bodyMd" as="span" color="subdued">
                           SKU: {sku}
                         </Text>
-                      </Stack>
-                    </Stack>
+                      </InlineStack>
+                    </BlockStack>
                   </ResourceItem>
                 );
               }}

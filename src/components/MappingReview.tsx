@@ -8,7 +8,8 @@ import {
   Button,
   Banner,
   SkeletonBodyText,
-  Stack,
+  InlineStack,
+  BlockStack,
   Badge,
   ButtonGroup,
 } from '@shopify/polaris';
@@ -171,28 +172,26 @@ export default function MappingReview({
               headings={['CSV Column', 'Sample Values', 'AI Confidence', 'Map To Shopify Field']}
               rows={rows}
             />
-            <div style={{ padding: '16px', borderTop: '1px solid #e1e3e5' }}>
-              <Stack distribution="trailing">
-                <ButtonGroup>
-                  <Button onClick={onBack}>Back</Button>
-                  <Button primary onClick={handleConfirm}>
-                    Confirm & Process
-                  </Button>
-                </ButtonGroup>
-              </Stack>
+            <div style={{ padding: '16px', borderTop: '1px solid #e1e3e5', display: 'flex', justifyContent: 'flex-end' }}>
+              <ButtonGroup>
+                <Button onClick={onBack}>Back</Button>
+                <Button primary onClick={handleConfirm}>
+                  Confirm & Process
+                </Button>
+              </ButtonGroup>
             </div>
           </Card>
         </Layout.Section>
 
         <Layout.Section>
           <Card title="Mapping Tips" sectioned>
-            <Stack vertical spacing="tight">
+            <BlockStack gap="200">
               <p><strong>Required fields:</strong> Title and Price must be mapped.</p>
               <p><strong>Color variants:</strong> Map the color column to combine products as variants.</p>
               <p><strong>Images:</strong> Map up to 3 image URL columns.</p>
               <p><strong>Descriptions:</strong> Multiple description fields will be combined automatically.</p>
               <p><strong>Ignore:</strong> Columns marked as "Ignore" will not be imported.</p>
-            </Stack>
+            </BlockStack>
           </Card>
         </Layout.Section>
       </Layout>
