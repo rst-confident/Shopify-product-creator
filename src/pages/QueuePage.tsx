@@ -18,7 +18,7 @@ import {
   TextContainer,
   ButtonGroup,
 } from '@shopify/polaris';
-import { ImageMajor } from '@shopify/polaris-icons';
+import { ImageIcon } from '@shopify/polaris-icons';
 import { queueApi, importApi } from '../utils/api';
 
 interface Product {
@@ -190,7 +190,7 @@ export default function QueuePage() {
                 const media = imageUrls && imageUrls.length > 0 ? (
                   <Thumbnail source={imageUrls[0]} alt={title} size="large" />
                 ) : (
-                  <Thumbnail source={ImageMajor} alt={title} size="large" />
+                  <Thumbnail source={ImageIcon} alt={title} size="large" />
                 );
 
                 return (

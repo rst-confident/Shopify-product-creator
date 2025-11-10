@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Frame, Navigation } from '@shopify/polaris';
-import { SettingsMajor, UploadMajor, ListMajor } from '@shopify/polaris-icons';
+import { SettingsIcon, UploadIcon, ListIcon } from '@shopify/polaris-icons';
 
 // Pages
 import SettingsPage from './pages/SettingsPage';
@@ -21,17 +21,17 @@ function App() {
         items={[
           {
             label: 'Upload CSV',
-            icon: UploadMajor,
+            icon: UploadIcon,
             url: '/upload',
           },
           {
             label: 'Products Queue',
-            icon: ListMajor,
+            icon: ListIcon,
             url: '/queue',
           },
           {
             label: 'Settings',
-            icon: SettingsMajor,
+            icon: SettingsIcon,
             url: '/settings',
           },
         ]}
