@@ -14,7 +14,7 @@ export const verifyRequest = async (
   next: NextFunction
 ) => {
   try {
-    const sessionId = shopify.session.getCurrentId({
+    const sessionId = await shopify.session.getCurrentId({
       isOnline: true,
       rawRequest: req,
       rawResponse: res,
