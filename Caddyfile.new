@@ -1,0 +1,110 @@
+# n8n Configuration
+ai.wemarket.dk {
+    # Automatic HTTPS - Caddy handles everything!
+
+    # Security headers
+    header {
+        # Enable HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        # Prevent XSS
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        # Remove server header
+        -Server
+    }
+
+    # Reverse proxy to n8n
+    reverse_proxy n8n:5678 {
+        # WebSocket support
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Health check endpoint
+    handle /healthz {
+        respond "OK" 200
+    }
+
+    # Logging
+    log {
+        output file /data/access.log
+        format json
+    }
+}
+
+# NocoDB Configuration
+db.wemarket.dk {
+    # Automatic HTTPS - Caddy handles everything!
+
+    # Security headers
+    header {
+        # Enable HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        # Prevent XSS
+        X-Content-Type-Options "nosniff"
+        # NocoDB needs to be embedded in iframes for some features, so we use SAMEORIGIN instead of DENY
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        # Remove server header
+        -Server
+    }
+
+    # Reverse proxy to NocoDB
+    reverse_proxy nocodb:8080 {
+        # WebSocket support (needed for real-time updates)
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Host {host}
+    }
+
+    # Health check endpoint
+    handle /healthz {
+        respond "OK" 200
+    }
+
+    # Logging
+    log {
+        output file /data/nocodb-access.log
+        format json
+    }
+}
+
+# Shopify Product Import Configuration
+produktimport.wemarket.dk {
+    # Automatic HTTPS - Caddy handles everything!
+
+    # Security headers
+    header {
+        # Enable HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        # Prevent XSS
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        # Remove server header
+        -Server
+    }
+
+    # Reverse proxy to Shopify Product Import App
+    reverse_proxy shopify-import-app:3000 {
+        # Forward headers for Shopify OAuth
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Host {host}
+    }
+
+    # Health check endpoint
+    handle /api/health {
+        reverse_proxy shopify-import-app:3000
+    }
+
+    # Logging
+    log {
+        output file /data/shopify-access.log
+        format json
+    }
+}
