@@ -1,48 +1,48 @@
-# Multi-stage build for Shopify Product Import App
+# Shopify Product Import App - Production Dockerfile
 
-# Stage 1: Build frontend
-FROM node:18-alpine AS frontend-builder
+# Build stage
+FROM node:18-alpine AS builder
 
-WORKDIR /app/client
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
 
-# Copy client package files
-COPY client/package*.json ./
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies (including devDependencies for build)
 RUN npm ci
 
-# Copy client source
-COPY client/ ./
+# Copy source code
+COPY tsconfig*.json ./
+COPY vite.config.ts ./
+COPY index.html ./
+COPY src ./src
+COPY server ./server
 
-# Build frontend
-RUN npm run build
+# Build both frontend and backend
+RUN npm run build:server && npm run build:client
 
-# Stage 2: Build backend
-FROM node:18-alpine AS backend-builder
-
-WORKDIR /app/server
-
-# Copy server package files
-COPY package*.json ./
-COPY server/package*.json ./
-RUN npm ci --only=production
-
-# Stage 3: Production image
+# Production stage
 FROM node:18-alpine
 
-# Install PostgreSQL client for database migrations
+# Install PostgreSQL client
 RUN apk add --no-cache postgresql-client
 
 WORKDIR /app
 
-# Copy backend dependencies
-COPY --from=backend-builder /app/node_modules ./node_modules
-COPY --from=backend-builder /app/server/node_modules ./server/node_modules
-
-# Copy backend source
-COPY server ./server
+# Copy package files
 COPY package*.json ./
 
-# Copy frontend build
-COPY --from=frontend-builder /app/client/dist ./client/dist
+# Install only production dependencies
+RUN npm ci --only=production
+
+# Copy built files from builder
+COPY --from=builder /app/dist ./dist
+
+# Copy server database files
+COPY server/db ./server/db
 
 # Create logs directory
 RUN mkdir -p logs && chmod 777 logs
@@ -55,4 +55,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Start the application
-CMD ["node", "server/index.js"]
+CMD ["node", "dist/server/index.js"]
