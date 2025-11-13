@@ -39,6 +39,7 @@ import mappingRoutes from './routes/mapping';
 import processRoutes from './routes/process';
 import queueRoutes from './routes/queue';
 import importRoutes from './routes/import';
+import webhooksRoutes from './routes/webhooks';
 import { query } from './db';
 
 const app = express();
@@ -57,7 +58,16 @@ app.use(
 // Request logging
 app.use(requestLogger);
 
-// Body parsing middleware
+// Webhook routes need raw body for HMAC verification
+// Must be before body parsing middleware
+app.use('/api/webhooks', express.json({
+  limit: '10mb',
+  verify: (req: any, res, buf) => {
+    req.rawBody = buf.toString('utf8');
+  }
+}));
+
+// Body parsing middleware for other routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -108,6 +118,7 @@ app.get('/health', async (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
+app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/mapping', mappingRoutes);
