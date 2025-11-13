@@ -79,6 +79,19 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- GDPR Requests table: Track GDPR compliance requests
+CREATE TABLE IF NOT EXISTS gdpr_requests (
+  id SERIAL PRIMARY KEY,
+  request_type VARCHAR(50) NOT NULL, -- 'data_request', 'customer_redact', 'shop_redact'
+  shop_domain VARCHAR(255) NOT NULL,
+  customer_id VARCHAR(255),
+  customer_email VARCHAR(255),
+  request_data JSONB,
+  processed BOOLEAN DEFAULT false,
+  processed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_uploaded_files_store_id ON uploaded_files(store_id);
 CREATE INDEX IF NOT EXISTS idx_products_queue_store_id ON products_queue(store_id);
@@ -96,3 +109,6 @@ CREATE INDEX IF NOT EXISTS idx_products_queue_import_type ON products_queue(impo
 CREATE INDEX IF NOT EXISTS idx_product_variants_parent_group ON product_variants(parent_group_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_shop ON sessions(shop);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
+CREATE INDEX IF NOT EXISTS idx_gdpr_requests_shop ON gdpr_requests(shop_domain);
+CREATE INDEX IF NOT EXISTS idx_gdpr_requests_type ON gdpr_requests(request_type);
+CREATE INDEX IF NOT EXISTS idx_gdpr_requests_created ON gdpr_requests(created_at);
