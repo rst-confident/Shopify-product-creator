@@ -41,8 +41,8 @@ RUN npm install --omit=dev
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy server database files
-COPY server/db ./server/db
+# Copy server database files to the correct location for migrations
+COPY server/db ./dist/server/db
 
 # Create logs directory
 RUN mkdir -p logs && chmod 777 logs
