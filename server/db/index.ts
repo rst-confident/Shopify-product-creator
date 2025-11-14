@@ -6,9 +6,16 @@ import {
   DB_POOL_CONNECTION_TIMEOUT_MS,
 } from '../utils/constants';
 
+// Determine SSL configuration
+// Only use SSL if explicitly enabled via DATABASE_SSL=true
+// This allows local Docker PostgreSQL to work without SSL
+const sslConfig = process.env.DATABASE_SSL === 'true'
+  ? { rejectUnauthorized: false }
+  : false;
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+  ssl: sslConfig,
   max: DB_POOL_MAX_SIZE,
   idleTimeoutMillis: DB_POOL_IDLE_TIMEOUT_MS,
   connectionTimeoutMillis: DB_POOL_CONNECTION_TIMEOUT_MS,
