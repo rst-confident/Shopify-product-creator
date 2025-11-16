@@ -1,11 +1,13 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Navigation, TopBar } from '@shopify/polaris';
+import { Navigation } from '@shopify/polaris';
 import { SettingsIcon, UploadIcon, ListBulletedIcon, HomeIcon } from '@shopify/polaris-icons';
 import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import StoreSelector from './components/StoreSelector';
 import CustomFrame from './components/CustomFrame';
+import CustomTopBar from './components/CustomTopBar';
+import CustomUserMenu from './components/CustomUserMenu';
 
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -35,7 +37,7 @@ function AppContent() {
   };
 
   const userMenuMarkup = user ? (
-    <TopBar.UserMenu
+    <CustomUserMenu
       actions={[
         {
           items: [
@@ -55,7 +57,7 @@ function AppContent() {
   ) : null;
 
   const topBarMarkup = user ? (
-    <TopBar
+    <CustomTopBar
       showNavigationToggle
       userMenu={userMenuMarkup}
       onNavigationToggle={toggleMobileNavigation}
