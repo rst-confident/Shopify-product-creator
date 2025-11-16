@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Frame, Navigation, TopBar, ActionList, Icon } from '@shopify/polaris';
-import { SettingsIcon, UploadIcon, ListBulletedIcon, HomeIcon, LogOutIcon } from '@shopify/polaris-icons';
+import { SettingsIcon, UploadIcon, ListBulletedIcon, HomeIcon } from '@shopify/polaris-icons';
 import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import StoreSelector from './components/StoreSelector';
@@ -40,7 +40,6 @@ function AppContent() {
           items: [
             {
               content: 'Logout',
-              icon: LogOutIcon,
               onAction: handleLogout,
             },
           ],
