@@ -9,7 +9,7 @@ const shopify = shopifyApi({
   hostName: process.env.HOST!.replace(/https?:\/\//, ''),
   hostScheme: 'https',
   apiVersion: LATEST_API_VERSION,
-  isEmbeddedApp: true,
+  isEmbeddedApp: false, // Standalone app - not embedded in Shopify Admin
   sessionStorage: new PostgreSQLSessionStorage(),
 });
 
