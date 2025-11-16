@@ -1,6 +1,5 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Navigation } from '@shopify/polaris';
 import { SettingsIcon, UploadIcon, ListBulletedIcon, HomeIcon } from '@shopify/polaris-icons';
 import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -8,6 +7,7 @@ import StoreSelector from './components/StoreSelector';
 import CustomFrame from './components/CustomFrame';
 import CustomTopBar from './components/CustomTopBar';
 import CustomUserMenu from './components/CustomUserMenu';
+import CustomNavigation from './components/CustomNavigation';
 
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -66,8 +66,8 @@ function AppContent() {
   ) : null;
 
   const navigationMarkup = user ? (
-    <Navigation location={window.location.pathname}>
-      <Navigation.Section
+    <CustomNavigation location={window.location.pathname}>
+      <CustomNavigation.Section
         items={
           isAdmin
             ? [
@@ -109,7 +109,7 @@ function AppContent() {
               ]
         }
       />
-    </Navigation>
+    </CustomNavigation>
   ) : null;
 
   return (
