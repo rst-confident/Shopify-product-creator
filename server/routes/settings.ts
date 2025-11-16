@@ -1,16 +1,38 @@
 import express from 'express';
-import { AuthRequest, verifyRequest } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { query } from '../db';
 import axios from 'axios';
 
 const router = express.Router();
 
+// All routes require authentication
+router.use(requireAuth);
+
+// Helper to verify store ownership
+async function verifyStoreOwnership(storeId: number, userId: number): Promise<boolean> {
+  const result = await query(
+    'SELECT id FROM stores WHERE id = $1 AND user_id = $2',
+    [storeId, userId]
+  );
+  return result.rows.length > 0;
+}
+
 // Get settings
-router.get('/', verifyRequest, async (req: AuthRequest, res) => {
+router.get('/', async (req, res) => {
   try {
+    const { storeId } = req.query;
+
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    if (!(await verifyStoreOwnership(Number(storeId), req.session.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
     const result = await query(
       'SELECT openrouter_api_key, selected_ai_model FROM stores WHERE id = $1',
-      [req.storeId]
+      [storeId]
     );
 
     if (result.rows.length === 0) {
@@ -30,15 +52,23 @@ router.get('/', verifyRequest, async (req: AuthRequest, res) => {
 });
 
 // Update settings
-router.post('/', verifyRequest, async (req: AuthRequest, res) => {
+router.post('/', async (req, res) => {
   try {
-    const { openrouterApiKey, selectedModel } = req.body;
+    const { storeId, openrouterApiKey, selectedModel } = req.body;
+
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    if (!(await verifyStoreOwnership(storeId, req.session.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     await query(
       `UPDATE stores
        SET openrouter_api_key = $1, selected_ai_model = $2, updated_at = CURRENT_TIMESTAMP
        WHERE id = $3`,
-      [openrouterApiKey, selectedModel, req.storeId]
+      [openrouterApiKey, selectedModel, storeId]
     );
 
     res.json({ success: true, message: 'Settings updated successfully' });
@@ -49,7 +79,7 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
 });
 
 // Test OpenRouter connection
-router.post('/test-connection', verifyRequest, async (req: AuthRequest, res) => {
+router.post('/test-connection', async (req, res) => {
   try {
     const { apiKey } = req.body;
 

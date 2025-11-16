@@ -1,9 +1,21 @@
 import express from 'express';
-import { AuthRequest, verifyRequest } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { query } from '../db';
 import axios from 'axios';
 
 const router = express.Router();
+
+// All routes require authentication
+router.use(requireAuth);
+
+// Helper to verify store ownership
+async function verifyStoreOwnership(storeId: number, userId: number): Promise<boolean> {
+  const result = await query(
+    'SELECT id FROM stores WHERE id = $1 AND user_id = $2',
+    [storeId, userId]
+  );
+  return result.rows.length > 0;
+}
 
 // Available Shopify fields for mapping
 export const SHOPIFY_FIELDS = [
@@ -26,14 +38,22 @@ export const SHOPIFY_FIELDS = [
 ];
 
 // AI-powered column mapping
-router.post('/ai-suggest', verifyRequest, async (req: AuthRequest, res) => {
+router.post('/ai-suggest', async (req, res) => {
   try {
-    const { headers, sampleData } = req.body;
+    const { headers, sampleData, storeId } = req.body;
+
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    if (!(await verifyStoreOwnership(storeId, req.session.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     // Get OpenRouter API key
     const storeResult = await query(
       'SELECT openrouter_api_key, selected_ai_model FROM stores WHERE id = $1',
-      [req.storeId]
+      [storeId]
     );
 
     if (storeResult.rows.length === 0) {
@@ -117,13 +137,21 @@ Rules:
 });
 
 // Save mapping configuration
-router.post('/save', verifyRequest, async (req: AuthRequest, res) => {
+router.post('/save', async (req, res) => {
   try {
-    const { fileId, mappings } = req.body;
+    const { fileId, mappings, storeId } = req.body;
+
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    if (!(await verifyStoreOwnership(storeId, req.session.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     await query(
       'UPDATE uploaded_files SET mapping_config = $1 WHERE id = $2 AND store_id = $3',
-      [JSON.stringify(mappings), fileId, req.storeId]
+      [JSON.stringify(mappings), fileId, storeId]
     );
 
     res.json({ success: true });
@@ -134,7 +162,7 @@ router.post('/save', verifyRequest, async (req: AuthRequest, res) => {
 });
 
 // Get available Shopify fields
-router.get('/fields', verifyRequest, async (req: AuthRequest, res) => {
+router.get('/fields', async (req, res) => {
   res.json({ fields: SHOPIFY_FIELDS });
 });
 
