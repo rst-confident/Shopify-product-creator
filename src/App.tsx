@@ -1,13 +1,10 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Frame, Navigation, TopBar } from '@shopify/polaris';
 import { SettingsIcon, UploadIcon, ListBulletedIcon, HomeIcon } from '@shopify/polaris-icons';
 import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import StoreSelector from './components/StoreSelector';
-import CustomFrame from './components/CustomFrame';
-import CustomTopBar from './components/CustomTopBar';
-import CustomUserMenu from './components/CustomUserMenu';
-import CustomNavigation from './components/CustomNavigation';
 
 // Pages
 import LoginPage from './pages/LoginPage';
@@ -37,7 +34,7 @@ function AppContent() {
   };
 
   const userMenuMarkup = user ? (
-    <CustomUserMenu
+    <TopBar.UserMenu
       actions={[
         {
           items: [
@@ -57,7 +54,7 @@ function AppContent() {
   ) : null;
 
   const topBarMarkup = user ? (
-    <CustomTopBar
+    <TopBar
       showNavigationToggle
       userMenu={userMenuMarkup}
       onNavigationToggle={toggleMobileNavigation}
@@ -66,8 +63,8 @@ function AppContent() {
   ) : null;
 
   const navigationMarkup = user ? (
-    <CustomNavigation location={window.location.pathname}>
-      <CustomNavigation.Section
+    <Navigation location={window.location.pathname}>
+      <Navigation.Section
         items={
           isAdmin
             ? [
@@ -109,11 +106,11 @@ function AppContent() {
               ]
         }
       />
-    </CustomNavigation>
+    </Navigation>
   ) : null;
 
   return (
-    <CustomFrame
+    <Frame
       topBar={topBarMarkup}
       navigation={navigationMarkup}
       showMobileNavigation={mobileNavigationActive}
@@ -182,7 +179,7 @@ function AppContent() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </CustomFrame>
+    </Frame>
   );
 }
 
