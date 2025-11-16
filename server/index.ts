@@ -178,29 +178,97 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Start server
+// Function to find an available port
+const findAvailablePort = async (startPort: number, maxAttempts = 10): Promise<number> => {
+  const net = await import('net');
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = startPort + i;
+
+    const isAvailable = await new Promise<boolean>((resolve) => {
+      const testServer = net.createServer();
+
+      testServer.once('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+          resolve(false);
+        } else {
+          resolve(false);
+        }
+      });
+
+      testServer.once('listening', () => {
+        testServer.close(() => {
+          resolve(true);
+        });
+      });
+
+      testServer.listen(port, '0.0.0.0');
+    });
+
+    if (isAvailable) {
+      return port;
+    }
+
+    logger.warn(`Port ${port} is in use, trying next port...`);
+  }
+
+  throw new Error(`Could not find an available port after ${maxAttempts} attempts starting from ${startPort}`);
+};
+
+// Start server with port availability check
 const server = createServer(app);
 
-server.listen(PORT, () => {
-  logger.info('Server started', {
-    environment: process.env.NODE_ENV || 'development',
-    port: PORT,
-    host: process.env.HOST || 'localhost',
-  });
+const startServer = async () => {
+  try {
+    const requestedPort = Number(PORT);
+    const availablePort = await findAvailablePort(requestedPort);
 
-  console.log(`
+    if (availablePort !== requestedPort) {
+      logger.warn(`Port ${requestedPort} was not available, using port ${availablePort} instead`);
+      console.warn(`⚠️  Warning: Port ${requestedPort} is in use. Starting server on port ${availablePort} instead.\n`);
+    }
+
+    server.listen(availablePort, () => {
+      logger.info('Server started', {
+        environment: process.env.NODE_ENV || 'development',
+        port: availablePort,
+        host: process.env.HOST || 'localhost',
+      });
+
+      console.log(`
 🚀 Shopify Product Import Server
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Environment: ${process.env.NODE_ENV || 'development'}
-Port: ${PORT}
+Port: ${availablePort}${availablePort !== requestedPort ? ` (fallback from ${requestedPort})` : ''}
 Host: ${process.env.HOST || 'localhost'}
 Logs: logs/combined.log
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  `);
+      `);
 
-  // Start background jobs
-  startBackgroundJobs();
-});
+      // Start background jobs
+      startBackgroundJobs();
+    });
+
+    server.on('error', (error: any) => {
+      if (error.code === 'EADDRINUSE') {
+        logger.error(`Port ${availablePort} is already in use`, { error });
+        console.error(`\n❌ Error: Port ${availablePort} is already in use.`);
+        console.error('Please stop any running instances or change the PORT in your .env file.\n');
+        process.exit(1);
+      } else {
+        logger.error('Server error', { error });
+        throw error;
+      }
+    });
+
+  } catch (error: any) {
+    logger.error('Failed to start server', { error: error.message });
+    console.error(`\n❌ Failed to start server: ${error.message}\n`);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 // Graceful shutdown
 const shutdown = async (signal: string) => {
