@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ResourceList, ResourceItem, Text, Button, Modal, FormLayout, TextField, Select, Banner, InlineStack, BlockStack } from '@shopify/polaris';
+import { ResourceList, ResourceItem, Text, Button, Modal, FormLayout, TextField, Select, Banner } from '@shopify/polaris';
 import { adminApi } from '../../utils/api';
 
 export default function AdminUsersTab({ users, onRefresh }: any) {
@@ -36,9 +36,9 @@ export default function AdminUsersTab({ users, onRefresh }: any) {
   return (
     <>
       <div style={{ padding: '16px' }}>
-        <InlineStack align="end">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <Button variant="primary" onClick={() => setShowModal(true)}>Add User</Button>
-        </InlineStack>
+        </div>
       </div>
 
       <ResourceList
@@ -46,14 +46,14 @@ export default function AdminUsersTab({ users, onRefresh }: any) {
         items={users}
         renderItem={(user: any) => (
           <ResourceItem id={String(user.id)}>
-            <InlineStack align="space-between">
-              <BlockStack gap="100">
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                 <Text variant="bodyMd" fontWeight="bold" as="h3">{user.email}</Text>
                 <Text variant="bodySm" as="p" tone="subdued">{user.name || 'No name'}</Text>
                 <Text variant="bodySm" as="p">{user.role === 'admin' ? '👑 Admin' : '👤 User'}</Text>
-              </BlockStack>
+              </div>
               <Button tone="critical" onClick={() => handleDelete(user.id)}>Delete</Button>
-            </InlineStack>
+            </div>
           </ResourceItem>
         )}
       />

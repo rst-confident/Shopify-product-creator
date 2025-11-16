@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ResourceList, ResourceItem, Text, Button, Modal, FormLayout, TextField, Select, Banner, InlineStack, BlockStack } from '@shopify/polaris';
+import { ResourceList, ResourceItem, Text, Button, Modal, FormLayout, TextField, Select, Banner } from '@shopify/polaris';
 import { adminApi } from '../../utils/api';
 
 export default function AdminStoresTab({ stores, users, onRefresh }: any) {
@@ -38,9 +38,9 @@ export default function AdminStoresTab({ stores, users, onRefresh }: any) {
   return (
     <>
       <div style={{ padding: '16px' }}>
-        <InlineStack align="end">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <Button variant="primary" onClick={() => setShowModal(true)}>Add Store</Button>
-        </InlineStack>
+        </div>
       </div>
 
       <ResourceList
@@ -48,14 +48,14 @@ export default function AdminStoresTab({ stores, users, onRefresh }: any) {
         items={stores}
         renderItem={(store: any) => (
           <ResourceItem id={String(store.id)}>
-            <InlineStack align="space-between">
-              <BlockStack gap="100">
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                 <Text variant="bodyMd" fontWeight="bold" as="h3">{store.store_name}</Text>
                 <Text variant="bodySm" as="p" tone="subdued">{store.shopify_domain}</Text>
                 <Text variant="bodySm" as="p" tone="subdued">Owner: {store.user_email}</Text>
-              </BlockStack>
+              </div>
               <Button tone="critical" onClick={() => handleDelete(store.id)}>Delete</Button>
-            </InlineStack>
+            </div>
           </ResourceItem>
         )}
       />

@@ -11,8 +11,8 @@ import {
   FormLayout,
   TextField,
   Banner,
-  InlineStack,
-  BlockStack,
+  Stack,
+  Stack,
 } from '@shopify/polaris';
 import { useAuth } from '../context/AuthContext';
 import { userStoresApi } from '../utils/api';
@@ -82,7 +82,7 @@ export default function MyStoresPage() {
           <Card>
             {stores.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center' }}>
-                <BlockStack gap="400">
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                   <Text as="p" variant="bodyMd">
                     You don't have any stores yet.
                   </Text>
@@ -91,7 +91,7 @@ export default function MyStoresPage() {
                       Add Your First Store
                     </Button>
                   </div>
-                </BlockStack>
+                </div>
               </div>
             ) : (
               <ResourceList
@@ -106,8 +106,8 @@ export default function MyStoresPage() {
                       onClick={() => handleSelectStore(id)}
                       accessibilityLabel={`Select ${store_name}`}
                     >
-                      <InlineStack align="space-between">
-                        <BlockStack gap="100">
+                      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                           <Text variant="bodyMd" fontWeight="bold" as="h3">
                             {store_name}
                           </Text>
@@ -117,8 +117,8 @@ export default function MyStoresPage() {
                           <Text variant="bodySm" as="p" tone="subdued">
                             Created: {new Date(created_at).toLocaleDateString()}
                           </Text>
-                        </BlockStack>
-                      </InlineStack>
+                        </div>
+                      </div>
                     </ResourceItem>
                   );
                 }}
@@ -145,7 +145,7 @@ export default function MyStoresPage() {
         ]}
       >
         <Modal.Section>
-          <BlockStack gap="400">
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             {error && <Banner tone="critical">{error}</Banner>}
 
             <FormLayout>
@@ -184,7 +184,7 @@ export default function MyStoresPage() {
                 helpText="For AI-powered column mapping"
               />
             </FormLayout>
-          </BlockStack>
+          </div>
         </Modal.Section>
       </Modal>
     </Page>

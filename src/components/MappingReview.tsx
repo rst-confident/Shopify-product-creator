@@ -8,8 +8,8 @@ import {
   Button,
   Banner,
   SkeletonBodyText,
-  InlineStack,
-  BlockStack,
+  Stack,
+  Stack,
   Badge,
   ButtonGroup,
 } from '@shopify/polaris';
@@ -193,13 +193,13 @@ export default function MappingReview({
 
         <Layout.Section>
           <Card title="Mapping Tips" sectioned>
-            <BlockStack gap="200">
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <p><strong>Required fields:</strong> Title and Price must be mapped.</p>
               <p><strong>Color variants:</strong> Map the color column to combine products as variants.</p>
               <p><strong>Images:</strong> Map up to 3 image URL columns.</p>
               <p><strong>Descriptions:</strong> Multiple description fields will be combined automatically.</p>
               <p><strong>Ignore:</strong> Columns marked as "Ignore" will not be imported.</p>
-            </BlockStack>
+            </div>
           </Card>
         </Layout.Section>
       </Layout>

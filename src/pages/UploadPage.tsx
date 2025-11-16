@@ -9,8 +9,8 @@ import {
   Button,
   Banner,
   Text,
-  InlineStack,
-  BlockStack,
+  Stack,
+  Stack,
   Badge,
 } from '@shopify/polaris';
 import { uploadApi, mappingApi, processApi } from '../utils/api';
@@ -152,12 +152,12 @@ export default function UploadPage() {
                 disabled={uploading || mappingStage !== 'upload'}
               >
                 {file ? (
-                  <BlockStack gap="200">
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                     <Text variant="bodyMd" as="p">
                       {file.name}
                     </Text>
                     <Badge status="success">Ready to upload</Badge>
-                  </BlockStack>
+                  </div>
                 ) : (
                   <DropZone.FileUpload actionHint="Accepts .csv files" />
                 )}
@@ -197,7 +197,7 @@ export default function UploadPage() {
 
         <Layout.Section>
           <Card title="How it works" sectioned>
-            <BlockStack gap="200">
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <Text variant="bodyMd" as="p">
                 1. Upload your CSV file containing product data
               </Text>
@@ -213,7 +213,7 @@ export default function UploadPage() {
               <Text variant="bodyMd" as="p">
                 5. Import selected products to Shopify
               </Text>
-            </BlockStack>
+            </div>
           </Card>
         </Layout.Section>
       </Layout>
