@@ -11,8 +11,8 @@ import {
   Banner,
   EmptyState,
   SkeletonBodyText,
-  InlineStack,
-  BlockStack,
+  Stack,
+  Stack,
   Badge,
   Modal,
   TextContainer,
@@ -20,6 +20,7 @@ import {
 } from '@shopify/polaris';
 import { ImageIcon } from '@shopify/polaris-icons';
 import { queueApi, importApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 interface Product {
   id: number;
@@ -34,6 +35,7 @@ interface Product {
 }
 
 export default function QueuePage() {
+  const { currentStore } = useAuth();
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
@@ -43,13 +45,17 @@ export default function QueuePage() {
   const [showImportModal, setShowImportModal] = useState(false);
 
   useEffect(() => {
-    loadProducts();
-  }, []);
+    if (currentStore) {
+      loadProducts();
+    }
+  }, [currentStore]);
 
   const loadProducts = async () => {
+    if (!currentStore) return;
+
     setLoading(true);
     try {
-      const data = await queueApi.getProducts();
+      const data = await queueApi.getProducts(currentStore.id);
       setProducts(data.products);
     } catch (error: any) {
       setBanner({ type: 'critical', message: error.message });
@@ -72,9 +78,14 @@ export default function QueuePage() {
       return;
     }
 
+    if (!currentStore) {
+      setBanner({ type: 'critical', message: 'No store selected' });
+      return;
+    }
+
     setImporting(true);
     try {
-      const result = await importApi.importProducts(selectedProducts, 'draft');
+      const result = await importApi.importProducts(currentStore.id, selectedProducts, 'draft');
       setBanner({
         type: 'success',
         message: `Successfully imported ${result.summary.successful} products! ${result.summary.failed > 0 ? `${result.summary.failed} failed.` : ''}`,
@@ -95,9 +106,14 @@ export default function QueuePage() {
       return;
     }
 
+    if (!currentStore) {
+      setBanner({ type: 'critical', message: 'No store selected' });
+      return;
+    }
+
     setDeleting(true);
     try {
-      await queueApi.deleteProducts(selectedProducts);
+      await queueApi.deleteProducts(currentStore.id, selectedProducts);
       setBanner({
         type: 'success',
         message: `Successfully deleted ${selectedProducts.length} products`,
@@ -199,11 +215,11 @@ export default function QueuePage() {
                     media={media}
                     accessibilityLabel={`View details for ${title}`}
                   >
-                    <BlockStack gap="200">
+                    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                       <Text variant="bodyMd" fontWeight="bold" as="h3">
                         {title}
                       </Text>
-                      <InlineStack gap="200">
+                      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                         <Badge>{supplierName}</Badge>
                         {color && <Badge status="info">{color}</Badge>}
                         <Text variant="bodyMd" as="span">
@@ -212,8 +228,8 @@ export default function QueuePage() {
                         <Text variant="bodyMd" as="span" color="subdued">
                           SKU: {sku}
                         </Text>
-                      </InlineStack>
-                    </BlockStack>
+                      </div>
+                    </div>
                   </ResourceItem>
                 );
               }}

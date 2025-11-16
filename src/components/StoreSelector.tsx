@@ -1,5 +1,5 @@
 import React from 'react';
-import { Select, InlineStack, Text } from '@shopify/polaris';
+import { Select, Text } from '@shopify/polaris';
 import { useAuth } from '../context/AuthContext';
 
 export default function StoreSelector() {
@@ -8,7 +8,7 @@ export default function StoreSelector() {
   if (stores.length === 0) {
     return (
       <div style={{ padding: '12px 16px' }}>
-        <Text as="p" tone="subdued">
+        <Text as="p">
           No stores available
         </Text>
       </div>
@@ -28,21 +28,19 @@ export default function StoreSelector() {
   };
 
   return (
-    <div style={{ padding: '12px 16px', minWidth: '250px' }}>
-      <InlineStack gap="200" align="center" blockAlign="center">
-        <Text as="span" variant="bodySm" fontWeight="semibold">
-          Store:
-        </Text>
-        <div style={{ flex: 1 }}>
-          <Select
-            label=""
-            labelHidden
-            options={options}
-            value={currentStore ? String(currentStore.id) : ''}
-            onChange={handleChange}
-          />
-        </div>
-      </InlineStack>
+    <div style={{ padding: '12px 16px', minWidth: '250px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <Text as="span" variant="bodySm">
+        Store:
+      </Text>
+      <div style={{ flex: 1 }}>
+        <Select
+          label=""
+          labelHidden
+          options={options}
+          value={currentStore ? String(currentStore.id) : ''}
+          onChange={handleChange}
+        />
+      </div>
     </div>
   );
 }

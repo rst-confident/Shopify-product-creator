@@ -9,7 +9,7 @@ import {
   Button,
   Banner,
   Text,
-  BlockStack,
+  Stack,
 } from '@shopify/polaris';
 import { useAuth } from '../context/AuthContext';
 
@@ -40,7 +40,7 @@ export default function LoginPage() {
   return (
     <Page>
       <div style={{ maxWidth: '500px', margin: '100px auto' }}>
-        <BlockStack gap="400">
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <div style={{ textAlign: 'center' }}>
             <Text variant="headingXl" as="h1">
               Shopify Product Importer
@@ -51,7 +51,7 @@ export default function LoginPage() {
           </div>
 
           <Card>
-            <BlockStack gap="400">
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {error && (
                 <Banner tone="critical" onDismiss={() => setError('')}>
                   {error}
@@ -95,9 +95,9 @@ export default function LoginPage() {
                   Contact your administrator for access
                 </Text>
               </div>
-            </BlockStack>
+            </div>
           </Card>
-        </BlockStack>
+        </div>
       </div>
     </Page>
   );

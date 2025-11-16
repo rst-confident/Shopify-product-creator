@@ -8,12 +8,13 @@ import {
   Button,
   Banner,
   SkeletonBodyText,
-  InlineStack,
-  BlockStack,
+  Stack,
+  Stack,
   Badge,
   ButtonGroup,
 } from '@shopify/polaris';
 import { mappingApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 interface MappingReviewProps {
   headers: string[];
@@ -47,6 +48,7 @@ export default function MappingReview({
   onComplete,
   onBack,
 }: MappingReviewProps) {
+  const { currentStore } = useAuth();
   const [loading, setLoading] = useState(true);
   const [mappings, setMappings] = useState<Record<string, { shopifyField: string; confidence: number }>>({});
   const [banner, setBanner] = useState<{ type: 'success' | 'critical' | 'info'; message: string } | null>(null);
@@ -56,9 +58,15 @@ export default function MappingReview({
   }, []);
 
   const loadAISuggestions = async () => {
+    if (!currentStore) {
+      setBanner({ type: 'critical', message: 'No store selected' });
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await mappingApi.getAISuggestions(headers, sampleData);
+      const data = await mappingApi.getAISuggestions(currentStore.id, headers, sampleData);
       setMappings(data.mappings);
       setBanner({
         type: 'info',
@@ -185,13 +193,13 @@ export default function MappingReview({
 
         <Layout.Section>
           <Card title="Mapping Tips" sectioned>
-            <BlockStack gap="200">
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <p><strong>Required fields:</strong> Title and Price must be mapped.</p>
               <p><strong>Color variants:</strong> Map the color column to combine products as variants.</p>
               <p><strong>Images:</strong> Map up to 3 image URL columns.</p>
               <p><strong>Descriptions:</strong> Multiple description fields will be combined automatically.</p>
               <p><strong>Ignore:</strong> Columns marked as "Ignore" will not be imported.</p>
-            </BlockStack>
+            </div>
           </Card>
         </Layout.Section>
       </Layout>

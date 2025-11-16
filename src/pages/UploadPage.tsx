@@ -9,14 +9,16 @@ import {
   Button,
   Banner,
   Text,
-  InlineStack,
-  BlockStack,
+  Stack,
+  Stack,
   Badge,
 } from '@shopify/polaris';
 import { uploadApi, mappingApi, processApi } from '../utils/api';
 import MappingReview from '../components/MappingReview';
+import { useAuth } from '../context/AuthContext';
 
 export default function UploadPage() {
+  const { currentStore } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [supplierName, setSupplierName] = useState('');
   const [notes, setNotes] = useState('');
@@ -45,12 +47,18 @@ export default function UploadPage() {
       return;
     }
 
+    if (!currentStore) {
+      setBanner({ type: 'critical', message: 'No store selected' });
+      return;
+    }
+
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('supplierName', supplierName);
       formData.append('notes', notes);
+      formData.append('storeId', currentStore.id.toString());
 
       const data = await uploadApi.uploadFile(formData);
       setUploadData(data);
@@ -64,13 +72,19 @@ export default function UploadPage() {
   };
 
   const handleMappingComplete = async (mappings: any) => {
+    if (!currentStore) {
+      setBanner({ type: 'critical', message: 'No store selected' });
+      return;
+    }
+
     setMappingStage('processing');
 
     try {
       // Save mapping and process products
-      await mappingApi.saveMapping(uploadData.fileId, mappings);
+      await mappingApi.saveMapping(currentStore.id, uploadData.fileId, mappings);
 
       const result = await processApi.processProducts(
+        currentStore.id,
         uploadData.fileId,
         mappings,
         uploadData.records,
@@ -138,12 +152,12 @@ export default function UploadPage() {
                 disabled={uploading || mappingStage !== 'upload'}
               >
                 {file ? (
-                  <BlockStack gap="200">
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                     <Text variant="bodyMd" as="p">
                       {file.name}
                     </Text>
                     <Badge status="success">Ready to upload</Badge>
-                  </BlockStack>
+                  </div>
                 ) : (
                   <DropZone.FileUpload actionHint="Accepts .csv files" />
                 )}
@@ -183,7 +197,7 @@ export default function UploadPage() {
 
         <Layout.Section>
           <Card title="How it works" sectioned>
-            <BlockStack gap="200">
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <Text variant="bodyMd" as="p">
                 1. Upload your CSV file containing product data
               </Text>
@@ -199,7 +213,7 @@ export default function UploadPage() {
               <Text variant="bodyMd" as="p">
                 5. Import selected products to Shopify
               </Text>
-            </BlockStack>
+            </div>
           </Card>
         </Layout.Section>
       </Layout>
