@@ -14,10 +14,9 @@ import {
  * Validate environment variables on startup
  */
 export function validateEnvironment(): void {
+  // Standalone app - only requires basic environment variables
+  // Shopify access tokens are stored per-store in the database
   const requiredEnvVars = [
-    'SHOPIFY_API_KEY',
-    'SHOPIFY_API_SECRET',
-    'SHOPIFY_SCOPES',
     'HOST',
     'DATABASE_URL',
     'SESSION_SECRET',

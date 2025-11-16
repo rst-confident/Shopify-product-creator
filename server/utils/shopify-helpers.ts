@@ -1,10 +1,50 @@
 /**
  * Shopify API Helper Functions
+ *
+ * This module provides direct GraphQL API access to Shopify stores.
+ * No Shopify SDK required - uses store-specific access tokens only.
  */
 
-import shopify from '../shopify/config';
+import axios from 'axios';
 import logger from './logger';
 import { retryWithBackoff } from './retry';
+
+// Shopify API version
+const SHOPIFY_API_VERSION = '2024-01';
+
+/**
+ * Make a direct GraphQL API call to Shopify
+ * @param accessToken - Store-specific Shopify access token
+ * @param shop - Shop domain (e.g., "mystore.myshopify.com")
+ * @param query - GraphQL query or mutation
+ * @param variables - GraphQL variables
+ * @returns GraphQL response data
+ */
+async function shopifyGraphQL(
+  accessToken: string,
+  shop: string,
+  query: string,
+  variables?: any
+): Promise<any> {
+  const url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+
+  const response = await axios.post(
+    url,
+    { query, variables },
+    {
+      headers: {
+        'X-Shopify-Access-Token': accessToken,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (response.data.errors) {
+    throw new Error(`Shopify GraphQL errors: ${JSON.stringify(response.data.errors)}`);
+  }
+
+  return response.data;
+}
 
 export interface ShopifyProduct {
   id: string;
@@ -44,10 +84,6 @@ export async function searchShopifyProducts(
   shop: string,
   searchQuery: string
 ): Promise<ShopifyProduct[]> {
-  const client = new shopify.clients.Graphql({
-    session: { accessToken, shop } as any
-  });
-
   const query = `
     query searchProducts($query: String!) {
       products(first: 50, query: $query) {
@@ -76,18 +112,13 @@ export async function searchShopifyProducts(
   `;
 
   try {
-    const response: any = await retryWithBackoff(
-      () => client.query({
-        data: {
-          query,
-          variables: { query: `title:*${searchQuery}*` },
-        },
-      }),
+    const response = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, query, { query: `title:*${searchQuery}*` }),
       3,
       `Search Shopify products: ${searchQuery}`
     );
 
-    const products = response.body.data.products.edges.map((edge: any) => ({
+    const products = response.data.products.edges.map((edge: any) => ({
       id: edge.node.id,
       title: edge.node.title,
       variants: edge.node.variants.edges.map((v: any) => v.node),
@@ -118,10 +149,6 @@ export async function getAllShopifyProducts(
   shop: string,
   limit: number = 250
 ): Promise<ShopifyProduct[]> {
-  const client = new shopify.clients.Graphql({
-    session: { accessToken, shop } as any
-  });
-
   const query = `
     query getProducts($first: Int!) {
       products(first: $first) {
@@ -150,18 +177,13 @@ export async function getAllShopifyProducts(
   `;
 
   try {
-    const response: any = await retryWithBackoff(
-      () => client.query({
-        data: {
-          query,
-          variables: { first: Math.min(limit, 250) },
-        },
-      }),
+    const response = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, query, { first: Math.min(limit, 250) }),
       3,
       'Get all Shopify products'
     );
 
-    const products = response.body.data.products.edges.map((edge: any) => ({
+    const products = response.data.products.edges.map((edge: any) => ({
       id: edge.node.id,
       title: edge.node.title,
       variants: edge.node.variants.edges.map((v: any) => v.node),
@@ -195,10 +217,6 @@ export async function addVariantsToProduct(
     options: string[];
   }>
 ): Promise<string[]> {
-  const client = new shopify.clients.Graphql({
-    session: { accessToken, shop } as any
-  });
-
   const mutation = `
     mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkCreate(productId: $productId, variants: $variants) {
@@ -223,21 +241,16 @@ export async function addVariantsToProduct(
   }));
 
   try {
-    const response: any = await retryWithBackoff(
-      () => client.query({
-        data: {
-          query: mutation,
-          variables: {
-            productId,
-            variants: variantInputs,
-          },
-        },
+    const response = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, mutation, {
+        productId,
+        variants: variantInputs,
       }),
       3,
       `Add variants to product ${productId}`
     );
 
-    const result = response.body.data.productVariantsBulkCreate;
+    const result = response.data.productVariantsBulkCreate;
 
     if (result.userErrors && result.userErrors.length > 0) {
       const errorMessage = result.userErrors.map((e: any) => e.message).join(', ');
@@ -282,10 +295,6 @@ export async function createShopifyProduct(
     images?: Array<{ src: string }>;
   }
 ): Promise<string> {
-  const client = new shopify.clients.Graphql({
-    session: { accessToken, shop } as any
-  });
-
   const mutation = `
     mutation productCreate($input: ProductInput!) {
       productCreate(input: $input) {
@@ -323,18 +332,13 @@ export async function createShopifyProduct(
   }
 
   try {
-    const response: any = await retryWithBackoff(
-      () => client.query({
-        data: {
-          query: mutation,
-          variables: { input },
-        },
-      }),
+    const response = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, mutation, { input }),
       3,
       `Create product: ${product.title}`
     );
 
-    const result = response.body.data.productCreate;
+    const result = response.data.productCreate;
 
     if (result.userErrors && result.userErrors.length > 0) {
       const errorMessage = result.userErrors.map((e: any) => e.message).join(', ');
@@ -368,10 +372,6 @@ export async function searchShopifyProductBySKU(
   shop: string,
   sku: string
 ): Promise<VariantSearchResult | null> {
-  const client = new shopify.clients.Graphql({
-    session: { accessToken, shop } as any
-  });
-
   const query = `
     query searchProductsBySKU($query: String!) {
       productVariants(first: 1, query: $query) {
@@ -392,18 +392,13 @@ export async function searchShopifyProductBySKU(
   `;
 
   try {
-    const response: any = await retryWithBackoff(
-      () => client.query({
-        data: {
-          query,
-          variables: { query: `sku:${sku}` },
-        },
-      }),
+    const response = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, query, { query: `sku:${sku}` }),
       3,
       `Search Shopify by SKU: ${sku}`
     );
 
-    const edges = response.body.data.productVariants.edges;
+    const edges = response.data.productVariants.edges;
 
     if (edges.length === 0) {
       logger.debug('SKU not found in Shopify', { sku });
@@ -454,10 +449,6 @@ export async function updateShopifyProduct(
     images?: Array<{ src: string }>;
   }
 ): Promise<void> {
-  const client = new shopify.clients.Graphql({
-    session: { accessToken, shop } as any
-  });
-
   const mutation = `
     mutation productUpdate($input: ProductInput!) {
       productUpdate(input: $input) {
@@ -481,18 +472,13 @@ export async function updateShopifyProduct(
   if (updates.images) input.images = updates.images;
 
   try {
-    const response: any = await retryWithBackoff(
-      () => client.query({
-        data: {
-          query: mutation,
-          variables: { input },
-        },
-      }),
+    const response = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, mutation, { input }),
       3,
       `Update product ${productId}`
     );
 
-    const result = response.body.data.productUpdate;
+    const result = response.data.productUpdate;
 
     if (result.userErrors && result.userErrors.length > 0) {
       const errorMessage = result.userErrors.map((e: any) => e.message).join(', ');
@@ -519,10 +505,6 @@ export async function updateVariantInventory(
   variantId: string,
   inventoryQuantity: number
 ): Promise<void> {
-  const client = new shopify.clients.Graphql({
-    session: { accessToken, shop } as any
-  });
-
   // First, get the inventory item ID
   const queryInventoryItem = `
     query getInventoryItem($id: ID!) {
@@ -535,18 +517,13 @@ export async function updateVariantInventory(
   `;
 
   try {
-    const inventoryResponse: any = await retryWithBackoff(
-      () => client.query({
-        data: {
-          query: queryInventoryItem,
-          variables: { id: variantId },
-        },
-      }),
+    const inventoryResponse = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, queryInventoryItem, { id: variantId }),
       3,
       `Get inventory item for variant ${variantId}`
     );
 
-    const inventoryItemId = inventoryResponse.body.data.productVariant.inventoryItem.id;
+    const inventoryItemId = inventoryResponse.data.productVariant.inventoryItem.id;
 
     // Get the first location
     const queryLocation = `
@@ -561,15 +538,13 @@ export async function updateVariantInventory(
       }
     `;
 
-    const locationResponse: any = await retryWithBackoff(
-      () => client.query({
-        data: { query: queryLocation },
-      }),
+    const locationResponse = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, queryLocation),
       3,
       'Get first location'
     );
 
-    const locationId = locationResponse.body.data.locations.edges[0].node.id;
+    const locationId = locationResponse.data.locations.edges[0].node.id;
 
     // Update inventory
     const mutation = `
@@ -587,23 +562,18 @@ export async function updateVariantInventory(
       }
     `;
 
-    const adjustResponse: any = await retryWithBackoff(
-      () => client.query({
-        data: {
-          query: mutation,
-          variables: {
-            input: {
-              inventoryLevelId: `gid://shopify/InventoryLevel/${inventoryItemId.split('/').pop()}?inventory_item_id=${inventoryItemId.split('/').pop()}`,
-              availableDelta: inventoryQuantity,
-            },
-          },
+    const adjustResponse = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, mutation, {
+        input: {
+          inventoryLevelId: `gid://shopify/InventoryLevel/${inventoryItemId.split('/').pop()}?inventory_item_id=${inventoryItemId.split('/').pop()}`,
+          availableDelta: inventoryQuantity,
         },
       }),
       3,
       `Update inventory for variant ${variantId}`
     );
 
-    const result = adjustResponse.body.data.inventoryAdjustQuantity;
+    const result = adjustResponse.data.inventoryAdjustQuantity;
 
     if (result.userErrors && result.userErrors.length > 0) {
       const errorMessage = result.userErrors.map((e: any) => e.message).join(', ');
@@ -635,10 +605,6 @@ export async function updateProductMetafields(
     value: string;
   }>
 ): Promise<void> {
-  const client = new shopify.clients.Graphql({
-    session: { accessToken, shop } as any
-  });
-
   const mutation = `
     mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
       metafieldsSet(metafields: $metafields) {
@@ -664,18 +630,13 @@ export async function updateProductMetafields(
   }));
 
   try {
-    const response: any = await retryWithBackoff(
-      () => client.query({
-        data: {
-          query: mutation,
-          variables: { metafields: metafieldInputs },
-        },
-      }),
+    const response = await retryWithBackoff(
+      () => shopifyGraphQL(accessToken, shop, mutation, { metafields: metafieldInputs }),
       3,
       `Update metafields for product ${productId}`
     );
 
-    const result = response.body.data.metafieldsSet;
+    const result = response.data.metafieldsSet;
 
     if (result.userErrors && result.userErrors.length > 0) {
       const errorMessage = result.userErrors.map((e: any) => e.message).join(', ');
