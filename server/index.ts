@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import session from 'express-session';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import path from 'path';
 import { createServer } from 'http';
@@ -31,15 +33,19 @@ try {
 mkdirSync('uploads', { recursive: true });
 mkdirSync('logs', { recursive: true });
 
+// Import middleware
+import { attachUser } from './middleware/auth';
+
 // Import routes
 import authRoutes from './routes/auth';
+import adminRoutes from './routes/admin';
+import userStoresRoutes from './routes/user-stores';
 import settingsRoutes from './routes/settings';
 import uploadRoutes from './routes/upload';
 import mappingRoutes from './routes/mapping';
 import processRoutes from './routes/process';
 import queueRoutes from './routes/queue';
 import importRoutes from './routes/import';
-import webhooksRoutes from './routes/webhooks';
 import { query } from './db';
 
 const app = express();
@@ -58,18 +64,30 @@ app.use(
 // Request logging
 app.use(requestLogger);
 
-// Webhook routes need raw body for HMAC verification
-// Must be before body parsing middleware
-app.use('/api/webhooks', express.json({
-  limit: '10mb',
-  verify: (req: any, res, buf) => {
-    req.rawBody = buf.toString('utf8');
-  }
-}));
-
-// Body parsing middleware for other routes
+// Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Cookie parser
+app.use(cookieParser());
+
+// Session management
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'your-secret-key-change-this-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+      httpOnly: true,
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+      sameSite: 'lax',
+    },
+  })
+);
+
+// Attach user data to requests (if authenticated)
+app.use(attachUser);
 
 // Rate limiting for API routes
 const apiLimiter = rateLimit({
@@ -118,7 +136,8 @@ app.get('/health', async (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/user/stores', userStoresRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/mapping', mappingRoutes);

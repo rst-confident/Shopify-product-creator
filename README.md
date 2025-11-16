@@ -1,364 +1,290 @@
-# Shopify Product Import App - MVP
+# Shopify Product Importer - Multi-Tenant Web Application
 
-AI-powered CSV to Shopify product importer. Upload CSV files, let AI map columns automatically, and import products to Shopify with smart variant grouping and duplicate detection.
+AI-powered product import system for Shopify stores with CSV/Excel support, intelligent column mapping, and multi-tenant user management.
 
-## Features (MVP)
+## 🚀 Quick Start
 
-### Core Functionality
-- **CSV Upload**: Drag-and-drop CSV file upload with supplier tracking
-- **AI Column Mapping**: Automatic column mapping using OpenRouter AI (Claude 3.5 Sonnet)
-- **Manual Mapping Override**: Review and adjust AI suggestions
-- **Smart Processing**:
-  - Duplicate EAN detection (checks existing Shopify products)
-  - Automatic SKU generation
-  - Color variant grouping
-  - Description field combining
-- **Products Queue**: Review products before import
-- **Shopify Import**: Batch import with progress tracking and error handling
+### For Google VM Deployment
 
-### Pages
-1. **Settings** - Configure OpenRouter API key and AI model
-2. **Upload CSV** - Upload and process CSV files
-3. **Products Queue** - Manage products awaiting import
+See **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** for complete step-by-step deployment instructions.
 
-## Tech Stack
+Quick deployment:
+```bash
+# 1. Install dependencies
+npm install
 
-### Frontend
-- React 18 + TypeScript
-- Shopify Polaris (UI components)
-- Vite (build tool)
-- React Router
+# 2. Configure environment
+cp .env.example .env
+nano .env  # Set SESSION_SECRET and DATABASE_URL
+
+# 3. Deploy
+./scripts/deploy.sh
+```
+
+### For Local Development
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Setup database
+createdb shopify_import
+npm run migrate
+
+# 3. Create admin user
+node scripts/create-admin.js
+
+# 4. Start development server
+npm run dev
+```
+
+## 📋 Features
+
+### Multi-Tenant System
+- **User Management**: Admin can create and manage user accounts
+- **Store Management**: Each user can manage multiple Shopify stores
+- **Data Isolation**: Complete separation between user data
+- **Role-Based Access**: Admin and user roles with different permissions
+
+### Product Import
+- **File Support**: CSV, Excel (.xlsx, .xls)
+- **AI Column Mapping**: Automatic field detection using OpenRouter AI
+- **Smart Processing**: SKU generation, duplicate detection, variant grouping
+- **Multiple Import Types**:
+  - Normal: Full product creation/update
+  - Pre-order: Inventory management with Danish metafields
+  - Inventory Change: Update stock levels only
+
+### Authentication & Security
+- Session-based authentication with bcrypt password hashing
+- 7-day session expiration
+- HTTPS-only cookies in production
+- Rate limiting on all API routes
+- Store ownership verification on every request
+
+## 🏗️ Architecture
 
 ### Backend
-- Node.js + Express
-- TypeScript
-- PostgreSQL (database)
-- Shopify API (GraphQL)
-- OpenRouter API (AI mapping)
+- **Framework**: Node.js + Express + TypeScript
+- **Database**: PostgreSQL
+- **Authentication**: express-session + bcrypt
+- **API Integration**: Shopify GraphQL, OpenRouter AI
+- **File Processing**: csv-parse, xlsx
 
-### Infrastructure
-- Google Cloud VM
-- GitHub Actions (CI/CD)
-- PM2 (process manager)
-- Domain: produktimport.wemarket.dk
+### Frontend
+- **Framework**: React 18 + TypeScript
+- **UI Library**: Shopify Polaris
+- **Build Tool**: Vite
+- **Routing**: React Router
 
-## Project Structure
-
-```
-shopify-product-import/
-├── server/                 # Backend Node.js/Express
-│   ├── db/                # Database connection and schema
-│   ├── middleware/        # Auth and other middleware
-│   ├── routes/            # API routes
-│   ├── shopify/           # Shopify integration
-│   └── index.ts           # Server entry point
-├── src/                   # Frontend React app
-│   ├── components/        # React components
-│   ├── pages/             # Page components
-│   ├── utils/             # API client and utilities
-│   └── App.tsx            # Main app component
-├── .github/workflows/     # GitHub Actions
-├── dist/                  # Build output
-└── uploads/               # Temporary file uploads
+## 📁 Project Structure
 
 ```
+shopify-product-creator/
+├── server/
+│   ├── db/
+│   │   ├── schema.sql              # Database schema
+│   │   └── migrations/             # Database migrations
+│   ├── middleware/
+│   │   └── auth.ts                 # Authentication middleware
+│   ├── routes/
+│   │   ├── auth.ts                 # Login/logout
+│   │   ├── admin.ts                # User/store management
+│   │   ├── user-stores.ts          # User's store operations
+│   │   ├── upload.ts               # File upload
+│   │   ├── mapping.ts              # AI column mapping
+│   │   ├── process.ts              # Product processing
+│   │   ├── queue.ts                # Product queue
+│   │   └── import.ts               # Shopify import
+│   ├── utils/
+│   │   ├── password.ts             # Password hashing
+│   │   ├── shopify-helpers.ts      # Shopify API
+│   │   └── ...
+│   └── index.ts                    # Server entry point
+├── src/                            # React frontend
+├── scripts/
+│   ├── deploy.sh                   # Automated deployment
+│   ├── create-admin.js             # Create admin user
+│   └── check-deployment.sh         # Health check
+├── DEPLOYMENT_GUIDE.md             # Deployment instructions
+└── MIGRATION_GUIDE.md              # Migration from old version
+```
 
-## Quick Start
+## 🔐 Environment Variables
 
-### Prerequisites
-- Node.js 18+
-- PostgreSQL 14+
-- Shopify Partner account
-- OpenRouter API key
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd shopify-product-import
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials
-   ```
-
-4. **Set up database**
-   ```bash
-   npm run migrate
-   ```
-
-5. **Start development server**
-   ```bash
-   npm run dev
-   ```
-
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:3001
-
-### Environment Variables
-
-Required environment variables (see `.env.example`):
+Required variables in `.env`:
 
 ```env
-# Shopify App Configuration
-SHOPIFY_API_KEY=your_shopify_api_key
-SHOPIFY_API_SECRET=your_shopify_api_secret
-SHOPIFY_SCOPES=write_products,read_products
-SHOPIFY_APP_URL=https://produktimport.wemarket.dk
-HOST=produktimport.wemarket.dk
-
 # Database
-DATABASE_URL=postgresql://user:password@localhost:5432/shopify_product_import
+DATABASE_URL=postgresql://user:password@localhost:5432/shopify_import
 
 # Server
 PORT=3001
 NODE_ENV=production
 
-# Session
-SESSION_SECRET=your_random_session_secret
+# Security (CRITICAL - Generate unique value!)
+SESSION_SECRET=<generate with: openssl rand -base64 32>
+
+# App URL
+SHOPIFY_APP_URL=https://your-domain.com
 ```
 
-## Deployment
+## 🗄️ Database Schema
 
-### GitHub Actions Setup
+### Users Table
+- Stores user accounts with email, password hash, name, and role
 
-Required secrets in GitHub repository settings:
+### Stores Table
+- Links to users, contains Shopify credentials and OpenRouter API keys
 
-- `GCP_SSH_PRIVATE_KEY` - SSH private key for Google Cloud VM
-- `GCP_USER` - Username on Google Cloud VM
-- `GCP_HOST` - Google Cloud VM hostname/IP
-- `DATABASE_URL` - PostgreSQL connection string
-- `SHOPIFY_API_KEY` - Shopify app API key
-- `SHOPIFY_API_SECRET` - Shopify app API secret
-- `SHOPIFY_SCOPES` - Shopify app scopes (comma-separated)
-- `SESSION_SECRET` - Random session secret
+### Uploaded Files Table
+- Tracks CSV/Excel uploads with mapping configurations
 
-### Deployment Process
+### Products Queue Table
+- Stores processed products awaiting import
 
-Automatic deployment on push to main branch:
+## 🔌 API Routes
+
+### Public Routes
+- `POST /api/auth/login` - User login
+
+### Authenticated Routes (All Users)
+- `GET /api/auth/me` - Get current user
+- `POST /api/auth/logout` - Logout
+- `GET /api/user/stores` - Get user's stores
+- `POST /api/user/stores` - Create store
+- `PUT /api/user/stores/:id` - Update store
+- `DELETE /api/user/stores/:id` - Delete store
+
+### Admin Routes (Admin Only)
+- `GET /api/admin/users` - List all users
+- `POST /api/admin/users` - Create user
+- `PUT /api/admin/users/:id` - Update user
+- `DELETE /api/admin/users/:id` - Delete user
+- `GET /api/admin/stores` - List all stores
+- `POST /api/admin/stores` - Create store for user
+
+### Product Import Routes
+- `POST /api/upload` - Upload CSV/Excel
+- `POST /api/mapping/ai-suggest` - Get AI mapping
+- `POST /api/process` - Process products
+- `GET /api/queue` - Get product queue
+- `POST /api/import` - Import to Shopify
+
+All routes (except login) require authentication and verify store ownership.
+
+## 🛠️ Scripts
 
 ```bash
-git push origin main
+# Development
+npm run dev              # Start dev server (hot reload)
+
+# Build
+npm run build            # Build server + client
+npm run build:server     # Build server only
+npm run build:client     # Build client only
+
+# Production
+npm start                # Start production server
+
+# Database
+npm run migrate          # Run migrations
+
+# Deployment
+./scripts/deploy.sh      # Automated deployment
+./scripts/check-deployment.sh  # Health check
+node scripts/create-admin.js   # Create admin user
 ```
 
-Manual deployment:
-- Go to GitHub Actions
-- Select "Deploy to Google Cloud VM"
-- Click "Run workflow"
+## 📊 Monitoring
 
-### Server Setup (One-time)
+### PM2 Commands
+```bash
+pm2 status               # Check status
+pm2 logs shopify-import  # View logs
+pm2 monit                # Monitor resources
+pm2 restart shopify-import  # Restart app
+```
 
-On your Google Cloud VM:
+### Health Check
+```bash
+curl http://localhost:3001/health
+```
+
+## 🔄 Updating
 
 ```bash
-# Install Node.js 18
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
+# Pull latest code
+git pull
 
-# Install PM2
-sudo npm install -g pm2
+# Install new dependencies
+npm install
 
-# Install PostgreSQL
-sudo apt-get install -y postgresql postgresql-contrib
-
-# Configure PostgreSQL
-sudo -u postgres createdb shopify_product_import
-sudo -u postgres createuser yourusername
-
-# Set up Nginx (optional, for HTTPS)
-sudo apt-get install -y nginx certbot python3-certbot-nginx
-```
-
-See `DEPLOYMENT.md` for detailed deployment instructions.
-
-## Usage Guide
-
-### 1. Configure OpenRouter API
-
-1. Go to Settings page
-2. Enter your OpenRouter API key from https://openrouter.ai/keys
-3. Select AI model (Claude 3.5 Sonnet recommended)
-4. Test connection
-5. Save settings
-
-### 2. Upload CSV File
-
-1. Go to Upload CSV page
-2. Drag and drop your CSV file (or click to browse)
-3. Enter supplier name
-4. (Optional) Add notes
-5. Click "Process File"
-
-### 3. Review Column Mappings
-
-1. AI automatically suggests column mappings
-2. Review the suggestions (green = high confidence)
-3. Adjust mappings using dropdowns if needed
-4. Required: Map at least "Title" and "Price"
-5. Click "Confirm & Process"
-
-### 4. Review Products Queue
-
-1. Go to Products Queue page
-2. Review processed products
-3. Select products to import (or "Select All")
-4. Click "Import Selected"
-5. Confirm import
-
-### 5. Products Imported!
-
-Products are created in Shopify as **drafts**. Go to your Shopify admin to publish them.
-
-## CSV Format
-
-Your CSV should include columns for:
-
-- **Product Title** (required)
-- **Price** (required)
-- **EAN/Barcode** (recommended for duplicate detection)
-- **SKU** (optional, auto-generated if not provided)
-- **Color** (for variant grouping)
-- **Image URLs** (up to 3)
-- **Description fields** (fabric, quality, fit, care, material, style, etc.)
-
-Example CSV:
-
-```csv
-Product Name,Price,EAN,Color,Image URL,Fabric,Care Instructions
-Winter Coat,599.00,1234567890123,Black,https://...,Wool,Dry clean only
-Winter Coat,599.00,1234567890124,Red,https://...,Wool,Dry clean only
-Summer Dress,349.00,1234567890125,Blue,https://...,Cotton,Machine wash
-```
-
-## API Endpoints
-
-### Settings
-- `GET /api/settings` - Get current settings
-- `POST /api/settings` - Update settings
-- `POST /api/settings/test-connection` - Test OpenRouter API key
-
-### Upload
-- `POST /api/upload` - Upload CSV file
-- `GET /api/upload` - Get upload history
-
-### Mapping
-- `POST /api/mapping/ai-suggest` - Get AI mapping suggestions
-- `POST /api/mapping/save` - Save mapping configuration
-- `GET /api/mapping/fields` - Get available Shopify fields
-
-### Process
-- `POST /api/process` - Process products with mappings
-
-### Queue
-- `GET /api/queue` - Get products in queue
-- `DELETE /api/queue` - Delete products from queue
-- `GET /api/queue/stats` - Get queue statistics
-
-### Import
-- `POST /api/import` - Import products to Shopify
-
-## Database Schema
-
-### Tables
-- **stores** - Shopify store configurations
-- **uploaded_files** - CSV upload tracking
-- **products_queue** - Products awaiting import
-- **product_variants** - Color variant tracking
-- **sessions** - Shopify OAuth sessions
-
-See `server/db/schema.sql` for complete schema.
-
-## Development
-
-### Build Commands
-
-```bash
-# Development mode (hot reload)
-npm run dev
-
-# Build backend
-npm run build:server
-
-# Build frontend
-npm run build:client
-
-# Build both
+# Rebuild
 npm run build
 
-# Run production build
-npm start
-
-# Run database migrations
-npm run migrate
+# Restart
+pm2 restart shopify-import
 ```
 
-### Code Structure
-
-- **Backend Routes**: `server/routes/`
-  - `auth.ts` - Shopify OAuth
-  - `settings.ts` - Settings management
-  - `upload.ts` - CSV upload
-  - `mapping.ts` - AI mapping
-  - `process.ts` - Product processing
-  - `queue.ts` - Queue management
-  - `import.ts` - Shopify import
-
-- **Frontend Pages**: `src/pages/`
-  - `SettingsPage.tsx` - Settings UI
-  - `UploadPage.tsx` - Upload UI
-  - `QueuePage.tsx` - Queue UI
-
-- **Frontend Components**: `src/components/`
-  - `MappingReview.tsx` - Column mapping interface
-
-## Troubleshooting
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-**1. "OpenRouter API key not configured"**
-- Go to Settings and configure your OpenRouter API key
+**bcrypt installation fails:**
+```bash
+sudo apt-get install -y build-essential python3
+npm install
+```
 
-**2. "Failed to import products"**
-- Check that you have the correct Shopify scopes: `write_products,read_products`
-- Verify your Shopify app is installed on the store
+**Database connection error:**
+```bash
+# Check PostgreSQL is running
+sudo systemctl status postgresql
 
-**3. "Database connection error"**
-- Check DATABASE_URL in .env
-- Ensure PostgreSQL is running
-- Run migrations: `npm run migrate`
+# Test connection
+psql $DATABASE_URL -c "SELECT 1;"
+```
 
-**4. CSV upload fails**
-- Ensure file is valid CSV format
-- Check file size (max 10MB)
-- Verify supplier name is provided
+**Session cookies not working:**
+- Ensure `SESSION_SECRET` is set in `.env`
+- Check `NODE_ENV=production` for HTTPS
+- Verify browser allows cookies
 
-**5. AI mapping not working**
-- Test your OpenRouter API key in Settings
-- Check you have credits on OpenRouter account
-- Try manual mapping as fallback
+**PM2 process crashes:**
+```bash
+pm2 logs shopify-import --lines 200
+```
 
-## Future Enhancements (Post-MVP)
+See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for detailed troubleshooting.
 
-See the roadmap document for planned features:
-- Delivery date tracking
-- Supplier management system
-- Mapping templates
-- Dashboard with analytics
-- Import history and archive
-- Advanced filtering and bulk operations
+## 📝 Default Credentials
 
-## Support
+**First admin user:**
+- Email: `admin@wemarket.dk`
+- Password: `admin123`
 
-For issues and feature requests, please create an issue in the GitHub repository.
+⚠️ **CHANGE THIS PASSWORD IMMEDIATELY AFTER FIRST LOGIN!**
 
-## License
+## 🔒 Security
 
-MIT License
+- Passwords hashed with bcrypt (10 rounds)
+- Session-based authentication (7-day expiration)
+- HTTPS-only cookies in production
+- Rate limiting on all API routes
+- SQL injection protection via parameterized queries
+- CORS configured for specific domain
+- Store ownership verified on every request
+
+## 📚 Documentation
+
+- [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) - Complete deployment instructions
+- [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md) - Migration from Shopify embedded app
+
+## 📄 License
+
+MIT
+
+---
+
+**Multi-Tenant Shopify Product Importer** - Simplifying product imports with AI-powered automation

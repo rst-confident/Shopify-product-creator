@@ -7,7 +7,7 @@
  */
 
 import express from 'express';
-import { AuthRequest, verifyRequest } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { query, getClient } from '../db';
 import logger from '../utils/logger';
 import {
@@ -18,6 +18,18 @@ import {
 } from '../utils/shopify-helpers';
 
 const router = express.Router();
+
+// All routes require authentication
+router.use(requireAuth);
+
+// Helper to verify store ownership
+async function verifyStoreOwnership(storeId: number, userId: number): Promise<boolean> {
+  const result = await query(
+    'SELECT id FROM stores WHERE id = $1 AND user_id = $2',
+    [storeId, userId]
+  );
+  return result.rows.length > 0;
+}
 
 interface QueueProduct {
   id: number;
@@ -83,11 +95,32 @@ function generatePreOrderInfo(timing: string | null, month: string | null): stri
 /**
  * Import selected products to Shopify
  */
-router.post('/', verifyRequest, async (req: AuthRequest, res) => {
+router.post('/', async (req, res) => {
   const client = await getClient();
 
   try {
-    const { productIds, publishStatus = 'draft' } = req.body;
+    const { storeId, productIds, publishStatus = 'draft' } = req.body;
+
+    // Validate store ownership
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    if (!(await verifyStoreOwnership(storeId, req.session.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get store credentials
+    const storeResult = await query(
+      'SELECT shopify_domain, shopify_access_token FROM stores WHERE id = $1',
+      [storeId]
+    );
+
+    if (storeResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    const { shopify_domain: shop, shopify_access_token: accessToken } = storeResult.rows[0];
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({ error: 'Product IDs required' });
@@ -96,6 +129,7 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
     logger.info('Starting product import', {
       productCount: productIds.length,
       publishStatus,
+      shop,
     });
 
     // Start transaction
@@ -113,7 +147,7 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
          pre_order_timing as "preOrderTiming", pre_order_month as "preOrderMonth"
        FROM products_queue
        WHERE id = ANY($1) AND store_id = $2 AND status = 'pending'`,
-      [productIds, req.storeId]
+      [productIds, storeId]
     );
 
     const products: QueueProduct[] = result.rows;
@@ -170,8 +204,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
         }
 
         await updateVariantInventory(
-          req.accessToken!,
-          req.shop!,
+          accessToken,
+          shop,
           product.matchedShopifyVariantId,
           product.inventoryQuantity
         );
@@ -210,8 +244,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
     for (const [productIdentifier, groupProducts] of toCreateNormal.entries()) {
       try {
         const shopifyProductId = await createNewProductWithVariants(
-          req.accessToken!,
-          req.shop!,
+          accessToken,
+          shop,
           groupProducts,
           shopifyStatus
         );
@@ -258,8 +292,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
 
         // Update product data
         await updateShopifyProduct(
-          req.accessToken!,
-          req.shop!,
+          accessToken,
+          shop,
           product.matchedShopifyProductId,
           {
             title: product.title,
@@ -279,8 +313,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
 
         // Update inventory
         await updateVariantInventory(
-          req.accessToken!,
-          req.shop!,
+          accessToken,
+          shop,
           product.matchedShopifyVariantId,
           product.inventoryQuantity
         );
@@ -323,8 +357,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
         if (product.importAction === 'create_new') {
           // Create new preorder product
           shopifyProductId = await createNewProductWithVariants(
-            req.accessToken!,
-            req.shop!,
+            accessToken,
+            shop,
             [product],
             shopifyStatus
           );
@@ -337,8 +371,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
 
           // Update inventory
           await updateVariantInventory(
-            req.accessToken!,
-            req.shop!,
+            accessToken,
+            shop,
             product.matchedShopifyVariantId,
             product.inventoryQuantity
           );
@@ -353,8 +387,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
           );
 
           await updateProductMetafields(
-            req.accessToken!,
-            req.shop!,
+            accessToken,
+            shop,
             shopifyProductId,
             [
               {
@@ -379,8 +413,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
         } else {
           // Remove preorder metafields (set to false/empty)
           await updateProductMetafields(
-            req.accessToken!,
-            req.shop!,
+            accessToken,
+            shop,
             shopifyProductId,
             [
               {

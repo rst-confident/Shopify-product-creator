@@ -11,6 +11,7 @@ import {
   SkeletonBodyText,
 } from '@shopify/polaris';
 import { settingsApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 const AI_MODELS = [
   { label: 'Claude 3.5 Sonnet (Recommended)', value: 'anthropic/claude-3.5-sonnet' },
@@ -20,6 +21,7 @@ const AI_MODELS = [
 ];
 
 export default function SettingsPage() {
+  const { currentStore } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -28,12 +30,15 @@ export default function SettingsPage() {
   const [banner, setBanner] = useState<{ type: 'success' | 'critical' | 'info'; message: string } | null>(null);
 
   useEffect(() => {
-    loadSettings();
-  }, []);
+    if (currentStore) {
+      loadSettings();
+    }
+  }, [currentStore]);
 
   const loadSettings = async () => {
+    if (!currentStore) return;
     try {
-      const data = await settingsApi.get();
+      const data = await settingsApi.get(currentStore.id);
       if (data.selectedModel) setSelectedModel(data.selectedModel);
       setLoading(false);
     } catch (error: any) {
@@ -43,6 +48,10 @@ export default function SettingsPage() {
   };
 
   const handleSave = async () => {
+    if (!currentStore) {
+      setBanner({ type: 'critical', message: 'No store selected' });
+      return;
+    }
     if (!apiKey) {
       setBanner({ type: 'critical', message: 'Please enter an API key' });
       return;
@@ -50,10 +59,7 @@ export default function SettingsPage() {
 
     setSaving(true);
     try {
-      await settingsApi.update({
-        openrouterApiKey: apiKey,
-        selectedModel,
-      });
+      await settingsApi.update(currentStore.id, apiKey, selectedModel);
       setBanner({ type: 'success', message: 'Settings saved successfully!' });
       setApiKey('');
     } catch (error: any) {

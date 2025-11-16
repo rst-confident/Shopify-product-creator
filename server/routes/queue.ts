@@ -1,12 +1,34 @@
 import express from 'express';
-import { AuthRequest, verifyRequest } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { query } from '../db';
 
 const router = express.Router();
 
+// All routes require authentication
+router.use(requireAuth);
+
+// Helper to verify store ownership
+async function verifyStoreOwnership(storeId: number, userId: number): Promise<boolean> {
+  const result = await query(
+    'SELECT id FROM stores WHERE id = $1 AND user_id = $2',
+    [storeId, userId]
+  );
+  return result.rows.length > 0;
+}
+
 // Get products in queue
-router.get('/', verifyRequest, async (req: AuthRequest, res) => {
+router.get('/', async (req, res) => {
   try {
+    const { storeId } = req.query;
+
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    if (!(await verifyStoreOwnership(Number(storeId), req.session.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
     const result = await query(
       `SELECT
          pq.id,
@@ -26,7 +48,7 @@ router.get('/', verifyRequest, async (req: AuthRequest, res) => {
        LEFT JOIN uploaded_files uf ON pq.uploaded_file_id = uf.id
        WHERE pq.store_id = $1 AND pq.status = 'pending'
        ORDER BY pq.created_at DESC`,
-      [req.storeId]
+      [storeId]
     );
 
     const products = result.rows.map((row) => ({
@@ -53,9 +75,17 @@ router.get('/', verifyRequest, async (req: AuthRequest, res) => {
 });
 
 // Delete products from queue
-router.delete('/', verifyRequest, async (req: AuthRequest, res) => {
+router.delete('/', async (req, res) => {
   try {
-    const { productIds } = req.body;
+    const { productIds, storeId } = req.body;
+
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    if (!(await verifyStoreOwnership(storeId, req.session.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return res.status(400).json({ error: 'Product IDs required' });
@@ -63,7 +93,7 @@ router.delete('/', verifyRequest, async (req: AuthRequest, res) => {
 
     await query(
       'DELETE FROM products_queue WHERE id = ANY($1) AND store_id = $2',
-      [productIds, req.storeId]
+      [productIds, storeId]
     );
 
     res.json({ success: true, deleted: productIds.length });
@@ -74,8 +104,18 @@ router.delete('/', verifyRequest, async (req: AuthRequest, res) => {
 });
 
 // Get queue statistics
-router.get('/stats', verifyRequest, async (req: AuthRequest, res) => {
+router.get('/stats', async (req, res) => {
   try {
+    const { storeId } = req.query;
+
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    if (!(await verifyStoreOwnership(Number(storeId), req.session.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
     const result = await query(
       `SELECT
          COUNT(*) as total_products,
@@ -83,7 +123,7 @@ router.get('/stats', verifyRequest, async (req: AuthRequest, res) => {
          COUNT(DISTINCT supplier_name) as suppliers
        FROM products_queue
        WHERE store_id = $1 AND status = 'pending'`,
-      [req.storeId]
+      [storeId]
     );
 
     res.json(result.rows[0]);

@@ -8,7 +8,7 @@
  */
 
 import express from 'express';
-import { AuthRequest, verifyRequest } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { getClient, query } from '../db';
 import logger from '../utils/logger';
 import { validatePrice, filterValidImageUrls } from '../utils/validation';
@@ -24,6 +24,18 @@ import {
 } from '../utils/constants';
 
 const router = express.Router();
+
+// All routes require authentication
+router.use(requireAuth);
+
+// Helper to verify store ownership
+async function verifyStoreOwnership(storeId: number, userId: number): Promise<boolean> {
+  const result = await query(
+    'SELECT id FROM stores WHERE id = $1 AND user_id = $2',
+    [storeId, userId]
+  );
+  return result.rows.length > 0;
+}
 
 interface MappedProduct {
   title: string;
@@ -68,11 +80,12 @@ interface ProcessedProduct {
  * Process CSV data with mappings
  * Uses SKU-based matching to detect existing products
  */
-router.post('/', verifyRequest, async (req: AuthRequest, res) => {
+router.post('/', async (req, res) => {
   const client = await getClient();
 
   try {
     const {
+      storeId,
       fileId,
       mappings,
       records,
@@ -81,6 +94,15 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
       preOrderTiming,
       preOrderMonth
     } = req.body;
+
+    // Validate store ownership
+    if (!storeId) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    if (!(await verifyStoreOwnership(storeId, req.session.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     // Validate input
     if (!records || records.length === 0) {
@@ -101,11 +123,24 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
       });
     }
 
+    // Get store credentials
+    const storeResult = await query(
+      'SELECT shopify_domain, shopify_access_token FROM stores WHERE id = $1',
+      [storeId]
+    );
+
+    if (storeResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    const { shopify_domain: shop, shopify_access_token: accessToken } = storeResult.rows[0];
+
     logger.info('Starting product processing', {
       fileId,
       recordCount: records.length,
       supplier: supplierName,
       importType,
+      shop,
     });
 
     // Start transaction
@@ -125,8 +160,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
 
     // Get existing EANs from Shopify to check for duplicates
     const existingEANs = await checkDuplicateEANs(
-      req.accessToken!,
-      req.shop!,
+      accessToken,
+      shop,
       mappedProducts.map((p) => p.ean).filter(Boolean) as string[]
     );
 
@@ -187,8 +222,8 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
         // Search Shopify for existing product by SKU
         logger.debug('Searching Shopify for SKU', { sku });
         const existingVariant = await searchShopifyProductBySKU(
-          req.accessToken!,
-          req.shop!,
+          accessToken,
+          shop,
           sku
         );
 
@@ -255,7 +290,7 @@ router.post('/', verifyRequest, async (req: AuthRequest, res) => {
       client,
       processedProducts,
       fileId,
-      req.storeId!,
+      storeId,
       supplierName
     );
 

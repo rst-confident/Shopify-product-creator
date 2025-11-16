@@ -1,111 +1,115 @@
 import express from 'express';
-import shopify from '../shopify/config';
+import { query } from '../db';
+import { hashPassword, verifyPassword } from '../utils/password';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import logger from '../utils/logger';
 
 const router = express.Router();
 
-// OAuth callback - handles the redirect after merchant authorizes the app
-router.get('/callback', async (req, res) => {
+/**
+ * POST /api/auth/login
+ * Login with email and password
+ */
+router.post('/login', async (req, res) => {
   try {
-    logger.info('OAuth callback received', {
-      shop: req.query.shop,
-      host: req.query.host,
-    });
+    const { email, password } = req.body;
 
-    const callback = await shopify.auth.callback({
-      rawRequest: req,
-      rawResponse: res,
-    });
-
-    const { session } = callback;
-
-    // Store session
-    await shopify.config.sessionStorage.storeSession(session);
-
-    logger.info('Session stored successfully', {
-      shop: session.shop,
-      isOnline: session.isOnline,
-    });
-
-    // For embedded apps, redirect to the app with shop and host parameters
-    const host = req.query.host as string;
-    const shop = session.shop;
-
-    // Construct the redirect URL for embedded app
-    // This will load the app inside Shopify admin iframe
-    const redirectUrl = `/?shop=${shop}&host=${host}`;
-
-    logger.info('Redirecting to app', { redirectUrl });
-
-    res.redirect(redirectUrl);
-  } catch (error: any) {
-    logger.error('OAuth callback error', { error: error.message, stack: error.stack });
-    res.status(500).send('OAuth failed. Please try again.');
-  }
-});
-
-// Begin OAuth - initiates the OAuth flow
-router.get('/', async (req, res) => {
-  try {
-    const shop = req.query.shop as string;
-
-    if (!shop) {
-      return res.status(400).send('Missing shop parameter');
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    logger.info('OAuth begin requested', { shop });
+    // Find user by email
+    const result = await query(
+      'SELECT id, email, password_hash, name, role FROM users WHERE email = $1',
+      [email.toLowerCase().trim()]
+    );
 
-    const sanitizedShop = shopify.utils.sanitizeShop(shop, true);
-
-    if (!sanitizedShop) {
-      return res.status(400).send('Invalid shop parameter');
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const authRoute = await shopify.auth.begin({
-      shop: sanitizedShop,
-      callbackPath: '/api/auth/callback',
-      isOnline: true, // Online access mode for embedded apps
-      rawRequest: req,
-      rawResponse: res,
-    });
+    const user = result.rows[0];
 
-    logger.info('Redirecting to Shopify OAuth', { shop: sanitizedShop });
+    // Verify password
+    const isValid = await verifyPassword(password, user.password_hash);
 
-    res.redirect(authRoute);
-  } catch (error: any) {
-    logger.error('OAuth begin error', { error: error.message, stack: error.stack });
-    res.status(500).send('OAuth initialization failed. Please try again.');
-  }
-});
-
-// Verify if the current session is valid (for debugging)
-router.get('/verify', async (req, res) => {
-  try {
-    const sessionId = await shopify.session.getCurrentId({
-      isOnline: true,
-      rawRequest: req,
-      rawResponse: res,
-    });
-
-    if (!sessionId) {
-      return res.status(401).json({ valid: false, message: 'No session found' });
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const session = await shopify.config.sessionStorage.loadSession(sessionId);
+    // Set session
+    req.session.userId = user.id;
+    req.session.userEmail = user.email;
+    req.session.userName = user.name;
+    req.session.userRole = user.role;
 
-    if (!session || !session.accessToken) {
-      return res.status(401).json({ valid: false, message: 'Invalid session' });
-    }
+    logger.info('User logged in', { userId: user.id, email: user.email });
 
     res.json({
-      valid: true,
-      shop: session.shop,
-      isOnline: session.isOnline,
-      expires: session.expires,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
     });
   } catch (error: any) {
-    logger.error('Session verification error', { error: error.message });
-    res.status(500).json({ valid: false, message: 'Verification failed' });
+    logger.error('Login error', { error: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+/**
+ * POST /api/auth/logout
+ * Logout current user
+ */
+router.post('/logout', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+
+    req.session.destroy((err) => {
+      if (err) {
+        logger.error('Logout error', { error: err.message });
+        return res.status(500).json({ error: 'Logout failed' });
+      }
+
+      logger.info('User logged out', { userId });
+      res.json({ message: 'Logged out successfully' });
+    });
+  } catch (error: any) {
+    logger.error('Logout error', { error: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Logout failed' });
+  }
+});
+
+/**
+ * GET /api/auth/me
+ * Get current user info
+ */
+router.get('/me', requireAuth, async (req, res) => {
+  try {
+    const result = await query(
+      'SELECT id, email, name, role FROM users WHERE id = $1',
+      [req.session.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = result.rows[0];
+
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Get user error', { error: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Failed to get user info' });
   }
 });
 
