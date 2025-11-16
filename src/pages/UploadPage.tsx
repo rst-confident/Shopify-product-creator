@@ -15,8 +15,10 @@ import {
 } from '@shopify/polaris';
 import { uploadApi, mappingApi, processApi } from '../utils/api';
 import MappingReview from '../components/MappingReview';
+import { useAuth } from '../context/AuthContext';
 
 export default function UploadPage() {
+  const { currentStore } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [supplierName, setSupplierName] = useState('');
   const [notes, setNotes] = useState('');
@@ -45,12 +47,18 @@ export default function UploadPage() {
       return;
     }
 
+    if (!currentStore) {
+      setBanner({ type: 'critical', message: 'No store selected' });
+      return;
+    }
+
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('supplierName', supplierName);
       formData.append('notes', notes);
+      formData.append('storeId', currentStore.id.toString());
 
       const data = await uploadApi.uploadFile(formData);
       setUploadData(data);
@@ -64,13 +72,19 @@ export default function UploadPage() {
   };
 
   const handleMappingComplete = async (mappings: any) => {
+    if (!currentStore) {
+      setBanner({ type: 'critical', message: 'No store selected' });
+      return;
+    }
+
     setMappingStage('processing');
 
     try {
       // Save mapping and process products
-      await mappingApi.saveMapping(uploadData.fileId, mappings);
+      await mappingApi.saveMapping(currentStore.id, uploadData.fileId, mappings);
 
       const result = await processApi.processProducts(
+        currentStore.id,
         uploadData.fileId,
         mappings,
         uploadData.records,

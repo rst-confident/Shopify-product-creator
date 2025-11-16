@@ -14,6 +14,7 @@ import {
   ButtonGroup,
 } from '@shopify/polaris';
 import { mappingApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 interface MappingReviewProps {
   headers: string[];
@@ -47,6 +48,7 @@ export default function MappingReview({
   onComplete,
   onBack,
 }: MappingReviewProps) {
+  const { currentStore } = useAuth();
   const [loading, setLoading] = useState(true);
   const [mappings, setMappings] = useState<Record<string, { shopifyField: string; confidence: number }>>({});
   const [banner, setBanner] = useState<{ type: 'success' | 'critical' | 'info'; message: string } | null>(null);
@@ -56,9 +58,15 @@ export default function MappingReview({
   }, []);
 
   const loadAISuggestions = async () => {
+    if (!currentStore) {
+      setBanner({ type: 'critical', message: 'No store selected' });
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await mappingApi.getAISuggestions(headers, sampleData);
+      const data = await mappingApi.getAISuggestions(currentStore.id, headers, sampleData);
       setMappings(data.mappings);
       setBanner({
         type: 'info',
